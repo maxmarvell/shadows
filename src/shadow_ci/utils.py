@@ -310,7 +310,7 @@ def apply_stabilizer_to_state(
         state: Bitstring,
         stabilizer: stim.PauliString,
         phase: complex
-    ) -> tuple[str, complex]:
+    ) -> tuple[Bitstring, complex]:
         """Apply a Pauli string (stabilizer) to a computational basis state.
 
         Args:
@@ -378,68 +378,33 @@ def canonicalize(stabilizers: List[stim.PauliString]) -> List[stim.PauliString]:
         canonicalized[i], canonicalized[j] = canonicalized[j], canonicalized[i]
 
     def rowmult(i: int, j: int):
+        canonicalized[j] = canonicalized[i] * canonicalized[j] 
 
-        if canonicalized[i].sign.imag != 0 or canonicalized[j].sign.imag != 0:
-            raise RuntimeError("Stabilizer has accumulated unphysical imaginary sign.")
-        
-        phase_sum = 2 * ((1 - int(canonicalized[i].sign.real)) // 2 + (1 - int(canonicalized[j].sign.real)) // 2)
+    canonicalized = [s.copy() for s in stabilizers]
+    nq = len(canonicalized[0])      # number of qubits = length of PauliString
+    nr = len(canonicalized)         # number of generators (rows)
 
-        x_i, z_i = canonicalized[i].to_numpy()
-        x_j, z_j = canonicalized[j].to_numpy()
-        n = len(x_i)
-        new_x_bits, new_z_bits = np.empty(n, dtype=bool), np.empty(n, dtype=bool)
-        for idx, (xi, zi, xj, zj) in enumerate(zip(x_i, z_i, x_j, z_j)):
-            if not xi and not zi: pass
-            elif xi and zi:
-                phase_sum += int(zj) - int(xj)
-            elif xi and not zi:
-                phase_sum += int(zj) * (2*int(xj) - 1)
-            else:
-                phase_sum += int(xj) * (1 - 2*int(zj))
-            new_x_bits[idx] = xi ^ xj
-            new_z_bits[idx] = zi ^ zj
-        phase = [1, 1j, -1, -1j][phase_sum % 4]
-        s = "".join(
-            "I" if not x and not z else
-            "X" if x and not z else
-            "Z" if not x and z else
-            "Y"
-            for x, z in zip(new_x_bits, new_z_bits)
-        )
-        new_pauli = stim.PauliString(s)
-        new_pauli *= phase
-        canonicalized[j] = new_pauli
-
-        return canonicalized
-            
-
-    canonicalized = stabilizers
-    N = len(stabilizers)
+    # X-block
     i = 0
-
-    # Setup X block - pivot on X and Y operators
-    for j in range(N):
-        # Find pivot row containing X or Y in column j
-        k = next((k for k in range(i, N) if canonicalized[k][j] in {1, 2}), None)
+    for j in range(nq):
+        k = next((k for k in range(i, nr) if canonicalized[k][j] in {1, 2}), None)
         if k is not None:
             rowswap(i, k)
-            # Eliminate X and Y from all other rows in this column
-            for m in range(N):
+            for m in range(nr):
                 if m != i and canonicalized[m][j] in {1, 2}:
                     rowmult(i, m)
             i += 1
 
-    # Setup Z block - pivot on Z operators
-    for j in range(N):
-        # Find pivot row containing Z in column j
-        k = next((k for k in range(i, N) if canonicalized[k][j] == 3), None)
+    # Z-block
+    for j in range(nq):
+        k = next((k for k in range(i, nr) if canonicalized[k][j] == 3), None)
         if k is not None:
             rowswap(i, k)
-            # Eliminate Z and Y from all other rows in this column
-            for m in range(N):
+            for m in range(nr):
                 if m != i and canonicalized[m][j] in {2, 3}:
                     rowmult(i, m)
             i += 1
+
 
     return canonicalized
 
