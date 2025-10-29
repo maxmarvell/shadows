@@ -1,0 +1,570 @@
+
+╭─── Claude Code v2.0.14 ──────────────────────────────────────────────────────╮
+│                                     │ Tips for getting started               │
+│          Welcome back Maxi!         │ Run /init to create a CLAUDE.md file … │
+│                                     │ Run /install-github-app to tag @claud… │
+│               ▐▛███▜▌               │ ────────────────────────────────────── │
+│              ▝▜█████▛▘              │ Recent activity                        │
+│                ▘▘ ▝▝                │ 3d ago  how to use the mypy ruff and … │
+│                                     │ 4d ago  Scientific Python Project Set… │
+│       Sonnet 4.5 · Claude Pro       │ /resume for more                       │
+│   /home/k25127283/repos/shadow-ci   │                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+> I need to prepare some ground state of a molecular Hamiltonian using a 
+varitaional quantum eigensolver. I have the molecular Hamiltonian, this I 
+need to transform to qubit spin basis with a JWT (this will be the 
+Hamiltonian I encode to VQE). What should my inital guess for a state be for
+ VQE? 
+
+● For VQE with a molecular Hamiltonian transformed via Jordan-Wigner
+  Transform (JWT), the Hartree-Fock (HF) state is the standard and
+  recommended initial guess.
+
+  Here's why and how:
+
+  Why Hartree-Fock?
+
+  - The HF state is the mean-field solution to the electronic structure
+  problem
+  - It typically captures ~99% of the total energy
+  - Provides the best classical starting point for quantum refinement
+  (capturing correlation energy)
+  - Ensures your VQE optimization starts in the correct symmetry sector
+
+  How it maps after JWT:
+
+  After JWT, the HF state becomes a simple computational basis state. For
+  example:
+  - If you have 4 spin orbitals with 2 electrons, the HF state might be:
+  |1100⟩
+  - The "1"s represent occupied orbitals, "0"s represent unoccupied
+  - The exact bitstring depends on your orbital ordering
+
+  Practical implementation:
+
+  # For a system with n_qubits and n_electrons
+  # HF state = first n_electrons qubits in |1⟩, rest in |0⟩
+  hf_state = [1]*n_electrons + [0]*(n_qubits - n_electrons)
+  # Example: [1,1,0,0] for 2 electrons, 4 qubits
+
+  Alternative (if HF unavailable):
+
+  If you don't have access to HF orbitals, the occupation number state
+  corresponding to filling the lowest energy orbitals in some reasonable
+  basis is a decent fallback.
+
+  Don't use: Random states or all |0⟩ states (unless |0⟩ happens to be your
+  HF state) - these converge much slower and may get stuck in local minima.
+
+  Are you implementing this from scratch or using a framework like
+  Qiskit/PennyLane?
+
+> I am going to use qiskit and I am going to use my Molecular Hamiltonian as
+ a starting point. 
+
+● Great! Qiskit makes this very straightforward. Here's how to set up VQE
+  with a Hartree-Fock initial state:
+
+  Using Qiskit Nature:
+
+  from qiskit_nature.second_q.mappers import JordanWignerMapper
+  from qiskit_nature.second_q.circuit.library import HartreeFock
+  from qiskit.primitives import Estimator
+  from qiskit_algorithms import VQE
+  from qiskit_algorithms.optimizers import SLSQP
+  from qiskit.circuit.library import TwoLocal
+
+  # Assuming you have your molecular Hamiltonian as a SparsePauliOp or 
+  # from an ElectronicStructureProblem
+
+  # 1. Transform to qubit basis with JWT
+  mapper = JordanWignerMapper()
+  qubit_hamiltonian = mapper.map(molecular_hamiltonian)
+
+  # 2. Create HartreeFock initial state
+  num_spatial_orbitals = ...  # your number of spatial orbitals
+  num_particles = (num_alpha, num_beta)  # e.g., (2, 2) for 4 electrons
+
+  hf_state = HartreeFock(
+      num_spatial_orbitals=num_spatial_orbitals,
+      num_particles=num_particles,
+      qubit_mapper=mapper
+  )
+
+  # 3. Build your ansatz (e.g., UCCSD or a hardware-efficient ansatz)
+  ansatz = TwoLocal(
+      num_qubits=qubit_hamiltonian.num_qubits,
+      rotation_blocks='ry',
+      entanglement_blocks='cx',
+      reps=3
+  )
+  # Compose with HF initial state
+  ansatz.compose(hf_state, front=True, inplace=True)
+
+  # 4. Set up and run VQE
+  optimizer = SLSQP(maxiter=100)
+  estimator = Estimator()
+
+  vqe = VQE(estimator, ansatz, optimizer)
+  result = vqe.compute_minimum_eigenvalue(qubit_hamiltonian)
+
+  print(f"Ground state energy: {result.eigenvalue.real}")
+
+  Key points:
+
+  - HartreeFock circuit automatically prepares the correct |1100...⟩ state
+  after JWT
+  - You need to know your num_spatial_orbitals and num_particles from your
+  molecular system
+  - The HF state is composed at the front of your variational ansatz
+  - For better results, consider using UCCSD ansatz instead of TwoLocal for
+  chemistry problems
+
+  Do you have your molecular Hamiltonian already defined, or do you need
+  help setting that up too?
+
+> I already have my molecular Hamiltonian defined in the code base 
+
+● Perfect! Let me take a look at your codebase to see how your molecular
+  Hamiltonian is defined and help you set up the VQE with the appropriate
+  initial state.
+
+● Search(pattern: "**/*.py")
+  ⎿  Found 100 files (ctrl+o to expand)
+
+● Let me focus on your source code:
+
+● Search(pattern: "src/**/*.py")
+  ⎿  Found 7 files (ctrl+o to expand)
+
+● Great! Let me look at your Hamiltonian and VQE implementation:
+
+● Read(src/shadow_ci/chemistry/hamiltonian.py)
+  ⎿  Read 47 lines
+
+● Read(src/shadow_ci/solvers/vqe.py)
+  ⎿  Read 5 lines
+
+● Perfect! I can see you have a MolecularHamiltonian class with the
+  molecular data and an empty VqeSolver class. Let me also check the base
+  solver class to understand the structure:
+
+● Read(src/shadow_ci/solvers/base.py)
+  ⎿  Read 27 lines
+
+● Excellent! Now I understand your structure. Let me implement the VQE
+  solver with the Hartree-Fock initial state. I'll create a complete
+  implementation:
+
+● Update(src/shadow_ci/solvers/vqe.py)
+  ⎿  Updated src/shadow_ci/solvers/vqe.py with 141 additions and 2 removals
+         1 +  from typing import Tuple, Optional
+         2 +  import numpy as np
+         3 +  from qiskit import QuantumCircuit
+         4 +  from qiskit.circuit.library import TwoLocal
+         5 +  from qiskit.primitives import Estimator
+         6 +  from qiskit.quantum_info import SparsePauliOp
+         7 +  from qiskit_algorithms import VQE
+         8 +  from qiskit_algorithms.optimizers import SLSQP, Optimizer
+         9 +  from qiskit_nature.second_q.operators import FermionicOp
+        10 +  from qiskit_nature.second_q.mappers import 
+           + JordanWignerMapper
+        11 +  
+        12    from shadow_ci.solvers.base import GroundStateSolver
+        13    
+        14 +  
+        15    class VqeSolver(GroundStateSolver):
+        16 -      
+        17 -      pass
+        16   \ No newline at end of file
+        17 +      """VQE solver with Jordan-Wigner transform and 
+           + Hartree-Fock initial state."""
+        18 +  
+        19 +      def __init__(
+        20 +          self,
+        21 +          hamiltonian,
+        22 +          optimizer: Optional[Optimizer] = None,
+        23 +          ansatz: Optional[QuantumCircuit] = None,
+        24 +          max_iter: int = 100,
+        25 +      ):
+        26 +          super().__init__(hamiltonian)
+        27 +          self.optimizer = optimizer if optimizer is not None
+           +  else SLSQP(maxiter=max_iter)
+        28 +          self.ansatz = ansatz
+        29 +          self.mapper = JordanWignerMapper()
+        30 +          self.qubit_hamiltonian = None
+        31 +          self.result = None
+        32 +  
+        33 +      def _create_fermionic_hamiltonian(self) -> FermionicOp:
+        34 +          """Convert molecular Hamiltonian to FermionicOp."""
+        35 +          h1e = self.hamiltonian.h1e
+        36 +          h2e = self.hamiltonian.h2e
+        37 +          norb = self.hamiltonian.norb
+        38 +  
+        39 +          # Build fermionic operator from integrals
+        40 +          fermionic_op = FermionicOp.zero()
+        41 +  
+        42 +          # One-body terms: h_pq a^†_p a_q
+        43 +          for p in range(norb):
+        44 +              for q in range(norb):
+        45 +                  if abs(h1e[p, q]) > 1e-12:
+        46 +                      label = f"+_{p} -_{q}"
+        47 +                      fermionic_op += FermionicOp({label: 
+           + h1e[p, q]}, num_spin_orbitals=2*norb)
+        48 +  
+        49 +          # Two-body terms: 0.5 * h_pqrs a^†_p a^†_q a_s a_r
+        50 +          # h2e is in chemist notation: (pq|rs)
+        51 +          h2e_reshaped = h2e.reshape(norb, norb, norb, norb)
+        52 +          for p in range(norb):
+        53 +              for q in range(norb):
+        54 +                  for r in range(norb):
+        55 +                      for s in range(norb):
+        56 +                          if abs(h2e_reshaped[p, q, r, s]) > 
+           + 1e-12:
+        57 +                              label = f"+_{p} +_{q} -_{s} 
+           + -_{r}"
+        58 +                              fermionic_op += FermionicOp(
+        59 +                                  {label: 0.5 * 
+           + h2e_reshaped[p, q, r, s]},
+        60 +                                  num_spin_orbitals=2*norb
+        61 +                              )
+        62 +  
+        63 +          return fermionic_op
+        64 +  
+        65 +      def get_qubit_hamiltonian(self) -> SparsePauliOp:
+        66 +          """Transform molecular Hamiltonian to qubit basis 
+           + using JWT."""
+        67 +          if self.qubit_hamiltonian is None:
+        68 +              fermionic_op = 
+           + self._create_fermionic_hamiltonian()
+        69 +              self.qubit_hamiltonian = 
+           + self.mapper.map(fermionic_op)
+        70 +          return self.qubit_hamiltonian
+        71 +  
+        72 +      def _create_hf_initial_state(self) -> QuantumCircuit:
+        73 +          """Create Hartree-Fock initial state circuit."""
+        74 +          num_alpha, num_beta = self.hamiltonian.nelec
+        75 +          num_spatial_orbitals = self.hamiltonian.norb
+        76 +          num_qubits = 2 * num_spatial_orbitals
+        77 +  
+        78 +          # Create circuit
+        79 +          qc = QuantumCircuit(num_qubits)
+        80 +  
+        81 +          # Fill first num_alpha qubits (alpha spin orbitals)
+        82 +          for i in range(num_alpha):
+        83 +              qc.x(i)
+        84 +  
+        85 +          # Fill next num_beta qubits (beta spin orbitals)
+        86 +          for i in range(num_beta):
+        87 +              qc.x(num_spatial_orbitals + i)
+        88 +  
+        89 +          return qc
+        90 +  
+        91 +      def _create_ansatz(self) -> QuantumCircuit:
+        92 +          """Create variational ansatz with HF initial 
+           + state."""
+        93 +          if self.ansatz is not None:
+        94 +              # Use custom ansatz if provided
+        95 +              ansatz = self.ansatz
+        96 +          else:
+        97 +              # Default: hardware-efficient ansatz
+        98 +              num_qubits = 2 * self.hamiltonian.norb
+        99 +              ansatz = TwoLocal(
+       100 +                  num_qubits=num_qubits,
+       101 +                  rotation_blocks='ry',
+       102 +                  entanglement_blocks='cx',
+       103 +                  entanglement='linear',
+       104 +                  reps=3
+       105 +              )
+       106 +  
+       107 +          # Prepend HF initial state
+       108 +          hf_state = self._create_hf_initial_state()
+       109 +          full_ansatz = hf_state.compose(ansatz)
+       110 +  
+       111 +          return full_ansatz
+       112 +  
+       113 +      def solve(self, **options) -> Tuple[QuantumCircuit, 
+           + float]:
+       114 +          """
+       115 +          Solve for ground state using VQE.
+       116 +  
+       117 +          Returns:
+       118 +              (optimal_circuit, energy) tuple
+       119 +          """
+       120 +          # Get qubit Hamiltonian
+       121 +          qubit_hamiltonian = self.get_qubit_hamiltonian()
+       122 +  
+       123 +          # Create ansatz with HF initial state
+       124 +          ansatz = self._create_ansatz()
+       125 +  
+       126 +          # Set up VQE
+       127 +          estimator = Estimator()
+       128 +          vqe = VQE(estimator, ansatz, self.optimizer)
+       129 +  
+       130 +          # Run VQE
+       131 +          self.result = 
+           + vqe.compute_minimum_eigenvalue(qubit_hamiltonian)
+       132 +  
+       133 +          # Add nuclear repulsion energy
+       134 +          self.energy = self.result.eigenvalue.real + 
+           + self.hamiltonian.nuclear_repulsion
+       135 +          self.state = self.result.optimal_circuit
+       136 +  
+       137 +          return self.state, self.energy
+       138 +  
+       139 +      def get_statevector(self):
+       140 +          """Return state as a statevector."""
+       141 +          if self.state is None:
+       142 +              raise RuntimeError("Must call solve() first")
+       143 +  
+       144 +          from qiskit.quantum_info import Statevector
+       145 +          return Statevector(self.state)
+       146   \ No newline at end of file
+
+● Now let me create an example script that demonstrates how to use this VQE
+  solver with your molecular Hamiltonian:
+
+● Write(examples/vqe_example.py)
+  ⎿  User rejected write to examples/vqe_example.py
+        1 +  """
+        2 +  Example: Using VQE with Jordan-Wigner Transform and 
+          + Hartree-Fock initial state
+        3 +  """
+        4 +  
+        5 +  from pyscf import gto, scf
+        6 +  from shadow_ci.chemistry.hamiltonian import 
+          + MolecularHamiltonian
+        7 +  from shadow_ci.solvers.vqe import VqeSolver
+        8 +  
+        9 +  
+       10 +  def main():
+       11 +      # Create H2 molecule
+       12 +      mol = gto.Mole()
+       13 +      mol.build(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g")
+       14 +  
+       15 +      # Run Hartree-Fock calculation
+       16 +      mf = scf.RHF(mol)
+       17 +      mf.kernel()
+       18 +  
+       19 +      # Create molecular Hamiltonian from PySCF
+       20 +      hamiltonian = MolecularHamiltonian.from_pyscf(mf)
+       21 +  
+       22 +      print("Molecular properties:")
+       23 +      print(f"  Number of orbitals: {hamiltonian.norb}")
+       24 +      print(f"  Number of electrons: {hamiltonian.nelec}")
+       25 +      print(f"  Nuclear repulsion: 
+          + {hamiltonian.nuclear_repulsion:.6f}")
+       26 +      print(f"  HF energy: {mf.e_tot:.6f}")
+       27 +  
+       28 +      # Create VQE solver
+       29 +      vqe_solver = VqeSolver(hamiltonian, max_iter=100)
+       30 +  
+       31 +      # Get qubit Hamiltonian (JWT applied)
+       32 +      qubit_ham = vqe_solver.get_qubit_hamiltonian()
+       33 +      print(f"\nQubit Hamiltonian (after JWT):")
+       34 +      print(f"  Number of qubits: {qubit_ham.num_qubits}")
+       35 +      print(f"  Number of Pauli terms: {len(qubit_ham)}")
+       36 +  
+       37 +      # Solve using VQE
+       38 +      print("\nRunning VQE...")
+       39 +      optimal_circuit, energy = vqe_solver.solve()
+       40 +  
+       41 +      print(f"\nVQE Results:")
+       42 +      print(f"  Ground state energy: {energy:.6f}")
+       43 +      print(f"  HF energy: {mf.e_tot:.6f}")
+       44 +      print(f"  Correlation energy: {energy - mf.e_tot:.6f}")
+       45 +      print(f"  Optimal circuit depth: 
+          + {optimal_circuit.depth()}")
+       46 +      print(f"  Number of parameters optimized: 
+          + {vqe_solver.result.optimal_point.shape[0]}")
+       47 +  
+       48 +  
+       49 +  if __name__ == "__main__":
+       50 +      main()
+
+> what if I also wanted to use some sort of parity encoding or some other 
+type of encoding besides JWT 
+
+● Great question! You can easily support multiple fermion-to-qubit mappings.
+   Let me modify the VQE solver to support different encodings:
+
+● Update(src/shadow_ci/solvers/vqe.py)
+  ⎿  Updated src/shadow_ci/solvers/vqe.py with 45 additions and 4 removals
+       1 -  from typing import Tuple, Optional
+       1 +  from typing import Tuple, Optional, Union
+       2    import numpy as np
+       3    from qiskit import QuantumCircuit
+       4    from qiskit.circuit.library import TwoLocal
+     ...
+        7    from qiskit_algorithms import VQE
+        8    from qiskit_algorithms.optimizers import SLSQP, Optimizer
+        9    from qiskit_nature.second_q.operators import FermionicOp
+       10 -  from qiskit_nature.second_q.mappers import 
+          -  JordanWignerMapper
+       10 +  from qiskit_nature.second_q.mappers import (
+       11 +      QubitMapper,
+       12 +      JordanWignerMapper,
+       13 +      ParityMapper,
+       14 +      BravyiKitaevMapper,
+       15 +  )
+       16    
+       17    from shadow_ci.solvers.base import GroundStateSolver
+       18    
+       19    
+       20    class VqeSolver(GroundStateSolver):
+       21 -      """VQE solver with Jordan-Wigner transform
+          -   and Hartree-Fock initial state."""
+       21 +      """VQE solver with configurable fermion-to-qubit mapping
+          +   and Hartree-Fock initial state."""
+       22    
+       23        def __init__(
+       24            self,
+       25            hamiltonian,
+       26            optimizer: Optional[Optimizer] = None,
+       27            ansatz: Optional[QuantumCircuit] = None,
+       28 +          mapper: Union[str, QubitMapper] = "jw",
+       29            max_iter: int = 100,
+       30        ):
+       31 +          """
+       32 +          Initialize VQE solver.
+       33 +  
+       34 +          Args:
+       35 +              hamiltonian: MolecularHamiltonian instance
+       36 +              optimizer: Qiskit optimizer (default: SLSQP)
+       37 +              ansatz: Custom ansatz circuit (default: 
+          + TwoLocal)
+       38 +              mapper: Fermion-to-qubit mapping. Options:
+       39 +                  - "jw" or "jordan_wigner": Jordan-Wigner 
+          + Transform
+       40 +                  - "parity": Parity encoding
+       41 +                  - "bravyi_kitaev" or "bk": Bravyi-Kitaev 
+          + Transform
+       42 +                  - Or pass a QubitMapper instance directly
+       43 +              max_iter: Maximum optimizer iterations
+       44 +          """
+       45            super().__init__(hamiltonian)
+       46            self.optimizer = optimizer if optimizer is not None 
+            else SLSQP(maxiter=max_iter)
+       47            self.ansatz = ansatz
+       48 -          self.mapper = JordanWignerMapper()
+       48 +          self.mapper = self._setup_mapper(mapper)
+       49            self.qubit_hamiltonian = None
+       50            self.result = None
+       51    
+       52 +      def _setup_mapper(self, mapper: Union[str, QubitMapper])
+          +  -> QubitMapper:
+       53 +          """Set up the fermion-to-qubit mapper."""
+       54 +          if isinstance(mapper, QubitMapper):
+       55 +              return mapper
+       56 +  
+       57 +          mapper_dict = {
+       58 +              "jw": JordanWignerMapper,
+       59 +              "jordan_wigner": JordanWignerMapper,
+       60 +              "parity": ParityMapper,
+       61 +              "bravyi_kitaev": BravyiKitaevMapper,
+       62 +              "bk": BravyiKitaevMapper,
+       63 +          }
+       64 +  
+       65 +          mapper_lower = mapper.lower()
+       66 +          if mapper_lower not in mapper_dict:
+       67 +              raise ValueError(
+       68 +                  f"Unknown mapper '{mapper}'. Choose from: 
+          + {list(mapper_dict.keys())}"
+       69 +              )
+       70 +  
+       71 +          return mapper_dict[mapper_lower]()
+       72 +  
+       73        def _create_fermionic_hamiltonian(self) -> FermionicOp:
+       74            """Convert molecular Hamiltonian to FermionicOp."""
+       75            h1e = self.hamiltonian.h1e
+
+● Now let me also update the Hartree-Fock initial state method to work
+  correctly with different mappings (especially parity, which can reduce
+  qubit count):
+
+● Update(src/shadow_ci/solvers/vqe.py)
+  ⎿  Updated src/shadow_ci/solvers/vqe.py with 9 additions and 12 removals
+       110            return self.qubit_hamiltonian
+       111    
+       112        def _create_hf_initial_state(self) -> QuantumCircuit:
+       113 -          """Create Hartree-Fock initial state circuit."""
+       113 +          """Create Hartree-Fock initial state circuit
+           +   for the chosen mapper."""
+       114            num_alpha, num_beta = self.hamiltonian.nelec
+       115            num_spatial_orbitals = self.hamiltonian.norb
+       116 -          num_qubits = 2 * num_spatial_orbitals
+       116    
+       117 -          # Create circuit
+       118 -          qc = QuantumCircuit(num_qubits)
+       117 +          # Use Qiskit Nature's built-in HF state preparation
+           +  for mappers
+       118 +          from qiskit_nature.second_q.circuit.library import 
+           + HartreeFock
+       119    
+       120 -          # Fill first num_alpha qubits (alpha spin orbitals)
+       121 -          for i in range(num_alpha):
+       122 -              qc.x(i)
+       120 +          hf_circuit = HartreeFock(
+       121 +              num_spatial_orbitals=num_spatial_orbitals,
+       122 +              num_particles=(num_alpha, num_beta),
+       123 +              qubit_mapper=self.mapper,
+       124 +          )
+       125    
+       126 -          # Fill next num_beta qubits (beta spin orbitals)
+       127 -          for i in range(num_beta):
+       128 -              qc.x(num_spatial_orbitals + i)
+       126 +          return hf_circuit
+       127    
+       128 -          return qc
+       129 -  
+       128        def _create_ansatz(self) -> QuantumCircuit:
+       129            """Create variational ansatz with HF initial 
+             state."""
+       130            if self.ansatz is not None:
+
+● Perfect! Now you can use different fermion-to-qubit encodings. Here's how
+  to use them:
+
+  Usage examples:
+
+  from shadow_ci.solvers.vqe import VqeSolver
+
+  # Jordan-Wigner Transform (default)
+  vqe_jw = VqeSolver(hamiltonian, mapper="jw")
+
+  # Parity encoding (reduces qubit count by 2 due to symmetries)
+  vqe_parity = VqeSolver(hamiltonian, mapper="parity")
+
+  # Bravyi-Kitaev Transform (balanced locality)
+  vqe_bk = VqeSolver(hamiltonian, mapper="bravyi_kitaev")
+
+  # Or pass a custom mapper instance
+  from qiskit_nature.second_q.mappers import ParityMapper
+  custom_mapper = ParityMapper()
+  vqe_custom = VqeSolver(hamiltonian, mapper=custom_mapper)
+
+  Key differences between mappings:
+
+  Jordan-Wigner (JWT):
+  - Most straightforward: 1 qubit per spin orbital
+  - Locality: Creates highly non-local interactions
+  - Best for: Small molecules, understanding behavior
+
+  Parity:
+  - Reduces qubits by 2 (eliminates redundant qubits using particle number
+  symmetry)
+  - More efficient for hardware
+  - Best for: Conserving resources on real quantum hardware
+
+  Bravyi-Kitaev:
+  - Balanced between locality and qubit efficiency
+  - Logarithmic scaling of operator weight
+  - Best for: Larger molecules with depth constraints
+
+  The Hartree-Fock initial state is automatically adapted for each mapping
+  using Qiskit Nature's HartreeFock circuit, which handles the correct state
+   preparation for each encoding scheme.
+
+
+
