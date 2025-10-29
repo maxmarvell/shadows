@@ -37,18 +37,16 @@ class Bitstring():
     def to_string(self) -> str:
         return ''.join('1' if bit else '0' for bit in self.array)
 
-    def to_stabilizer(self) -> stim.Tableau:
-        n_qubits = len(self.array)
-        tableau = stim.Tableau(n_qubits)
-
-        for i, bit in enumerate(self.array):
+    def to_stabilizers(self) -> List[stim.PauliString]:
+        out = []
+        for i, bit in enumerate(b):             # leftmost index = 0
+            s = ['I'] * self.size
+            s[i] = 'Z'
+            p = stim.PauliString(''.join(s))
             if bit:
-                x_gate = stim.Tableau.from_named_gate("X")
-                expanded_gate = stim.Tableau(n_qubits)
-                expanded_gate.prepend(x_gate, [n_qubits - 1 - i])
-                tableau = tableau.then(expanded_gate)
-
-        return tableau
+                p *= -1                         # eigenvalue -1 for |1> under Z
+            out.append(p)
+        return out
 
     def to_int(self) -> int:
         return int(self.to_string(), 2)
@@ -284,7 +282,7 @@ def gaussian_elimination(
     n_qubits = target_str.size
 
     for n in range(n_qubits):
-        if target_str[n_qubits-1-n] != interm_state[n_qubits-1-n]:
+        if target_str[n] != interm_state[n]:
             for m in range(len(stabilizers)):
                 stabilizer = stabilizers[m]
                 x_bits, _ = stabilizer.to_numpy()
@@ -302,7 +300,7 @@ def gaussian_elimination(
                     break
 
         # no overlap
-        if target_str[n_qubits-1-n] != interm_state[n_qubits-1-n]: return 0j
+        if target_str[n] != interm_state[n]: return 0j
 
     return phase
 
@@ -330,12 +328,12 @@ def apply_stabilizer_to_state(
         # Apply each Pauli operator
         for n in range(n_qubits):
             pauli = stabilizer[n]
-            bit = post_state[n_qubits-n-1]
+            bit = post_state[n]
 
             if pauli == 1: # X
-                post_state[n_qubits-n-1] = not bit
+                post_state[n] = not bit
             elif pauli == 2: # Y
-                post_state[n_qubits-n-1] = not bit
+                post_state[n] = not bit
                 new_phase = new_phase * (1j) * (-1) ** (int(bit))
             elif pauli == 3: # Z
                 new_phase = new_phase * (-1) ** (int(bit))
@@ -419,61 +417,18 @@ if __name__ == "__main__":
     U = stim.Tableau.from_stabilizers(stabilizers)
     b = Bitstring([True, False, True, True])
 
-    # try composing tableaus directly
-    b_tab = b.to_stabilizer()
-    # tableau = b_tab.then(U.inverse())
-    tableau = U.inverse() * b_tab
+    sim = stim.TableauSimulator()
+    sim.set_state_from_stabilizers(b.to_stabilizers())
+    sim.do_tableau(U.inverse(), targets=list(range(4)))
 
     print('='*50)
     print('Tableau from running U_inv * |b>')
     print('='*50)
-    print(tableau.to_stabilizers())
+    print(sim.current_inverse_tableau().to_stabilizers())
 
-    # import qiskit
-    # from qiskit.quantum_info import Clifford, StabilizerState
-
-    # # Build the same Clifford in Qiskit from Stim's tableau U
-    # symp_mat = (
-    #     [str(U.x_output(k)).replace("_", "I") for k in range(len(U))] +
-    #     [str(s).replace("_", "I") for s in U.to_stabilizers()]
-    # )
-    # rand_clifford = Clifford(symp_mat)
-
-    # # Correct encoding of the computational basis state |b>
-    # # For each qubit i, generator is Z_i with sign (-) if b[i]==1 else (+)
-    # n = b.size
-    # labels = []
-    # for i, bit in enumerate(b):
-    #     s = ['I'] * n
-    #     s[i] = 'Z'
-    #     labels.append(('-' if bit else '+') + ''.join(s))
-
-    # stab_data = StabilizerState.from_stabilizer_list(labels)     # this is |b>
-    # print(stab_data)
-    # stab_data = stab_data.evolve(rand_clifford)  # apply U^\dagger
-
-    # # Extract stabilizer generators (sign in column 0)
-    # stab_matrix = []
-    # for lab in stab_data.clifford.to_labels(mode="S"):
-    #     row = list(lab[1:]) + ([1] if lab[0] == '+' else [-1])
-    #     stab_matrix.append(row)
-
-    # print('='*50)
-    # print('Tableau from running Qiskit (correct |b> encoding)')
-    # print('='*50)
-    # print(stab_matrix)
-
-    
-    # b_tab = b.to_stabilizer()
-    # tableau = U * b_tab
-
-    # print(tableau.to_stabilizers())
-
-    # sim = stim.TableauSimulator()
-    # sim.set_state_from_stabilizers(tableau.to_stabilizers())
-    # stabilizers = canonicalize(tableau.to_stabilizers())
-
-    # print(stabilizers)
+    stabs = sim.current_inverse_tableau().to_stabilizers()
+    canonical = canonicalize(stabs)
+    print(canonical)
 
     print('='*50)
     print('CHECKING CANONICALIZATION FORMULA')
