@@ -1,1 +1,0 @@
-from shadow_ci.chemistry.hamiltonian import MolecularHamiltonian

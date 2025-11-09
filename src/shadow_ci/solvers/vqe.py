@@ -1,13 +1,10 @@
 from typing import Tuple, Optional, Union
-import numpy as np
 from qiskit import QuantumCircuit, transpile
-from qiskit.circuit.library import n_local as TwoLocal
 from qiskit_nature.second_q.circuit.library.ansatzes import UCC
-from qiskit.quantum_info import SparsePauliOp
 from qiskit_aer.primitives import EstimatorV2
 from qiskit_aer import AerSimulator
 from qiskit_algorithms import VQE
-from qiskit_algorithms.optimizers import COBYLA, Optimizer, SLSQP
+from qiskit_algorithms.optimizers import SLSQP
 from qiskit_nature.second_q.operators import FermionicOp
 from qiskit.quantum_info import Statevector
 from qiskit_nature.second_q.mappers import (
@@ -19,11 +16,9 @@ from qiskit_nature.second_q.mappers import (
 from qiskit_nature.second_q.circuit.library import HartreeFock
 
 from shadow_ci.solvers.base import GroundStateSolver
-from shadow_ci.chemistry.hamiltonian import MolecularHamiltonian
+from shadow_ci.hamiltonian import MolecularHamiltonian
 
 from qiskit_nature.second_q.drivers import PySCFDriver
-
-from qiskit_aer.primitives import Estimator as AerEstimator
 
 
 class VQESolver(GroundStateSolver):
@@ -120,8 +115,6 @@ class VQESolver(GroundStateSolver):
             initial_state=initial_state,            # start from mean-field |HF>
         )
 
-        # Transpile the ansatz to basic gates that AerEstimator can handle
-        # We need to transpile rather than just decompose to handle PauliEvolution gates
         backend = AerSimulator()
         ansatz = transpile(ansatz, backend, optimization_level=0)
 
@@ -133,7 +126,6 @@ class VQESolver(GroundStateSolver):
 
         result = vqe.compute_minimum_eigenvalue(operator=qubit_hamiltonian)
 
-        # Add nuclear repulsion energy to get total energy
         total_energy = result.optimal_value + self.nuclear_repulsion_energy
 
         return Statevector(ansatz.assign_parameters(result.optimal_parameters)), total_energy
@@ -142,11 +134,9 @@ if __name__ == "__main__":
 
     from pyscf import gto, scf
 
-    # create a H2 mol
     mol = gto.Mole()
     mol.build(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g")
 
-    # create mean-field object
     mf = scf.RHF(mol)
     H = MolecularHamiltonian.from_pyscf(mf)
 

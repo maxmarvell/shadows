@@ -592,6 +592,5 @@ class TestPaperExample:
         print(f"Expected: {expected_00}")
         print(f"Match: {np.isclose(overlap, expected_00, atol=1e-6)}")
 
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -3,10 +3,18 @@ from typing import List
 import stim
 
 import numpy as np
+from numpy.typing import NDArray
 
 @dataclass
 class Bitstring():
+
     array: List[bool]
+    endianess: str = 'little'
+
+    def __post_init__(self):
+        """Validate endianness parameter."""
+        if self.endianess not in ('big', 'little'):
+            raise ValueError(f"endianess must be 'big' or 'little', got '{self.endianess}'")
 
     @property
     def size(self) -> int:
@@ -24,7 +32,7 @@ class Bitstring():
         """Check equality with another Bitstring."""
         if not isinstance(other, Bitstring):
             return False
-        return self.array == other.array
+        return self.array == other.array and self.endianess == other.endianess
 
     def __iter__(self):
         """Allow iteration over bits."""
@@ -35,40 +43,82 @@ class Bitstring():
         return len(self.array)
 
     def to_string(self) -> str:
-        return ''.join('1' if bit else '0' for bit in self.array)
+        """Convert bitstring to string representation."""
+        if self.endianess == 'big':
+            return ''.join('1' if bit else '0' for bit in self.array)
+        else:
+            return ''.join('1' if bit else '0' for bit in self.array[::-1])
 
     def to_stabilizers(self) -> List[stim.PauliString]:
+        """Convert to list of stabilizer generators."""
         out = []
-        for i, bit in enumerate(b):             # leftmost index = 0
-            s = ['I'] * self.size
-            s[i] = 'Z'
-            p = stim.PauliString(''.join(s))
+        n = self.size
+        for i, bit in enumerate(self.array):
+            label = ['I'] * n
+            label[n - 1 - i] = 'Z'             
+            p = stim.PauliString(''.join(label))
             if bit:
-                p *= -1                         # eigenvalue -1 for |1> under Z
+                p *= -1                  
             out.append(p)
         return out
 
     def to_int(self) -> int:
-        return int(self.to_string(), 2)
+        """Convert bitstring to integer.
+
+        For both endianness: to_string() already handles reversal, so we just convert.
+        """
+        if self.endianess == 'little':
+            value = sum((1 << i) if bit else 0 for i, bit in enumerate(self.array))
+        else:
+            n = len(self.array)
+            value = sum((1 << (n - 1 - i)) if bit else 0 for i, bit in enumerate(self.array))
+        return value
+
+    def to_array(self) -> NDArray[np.int_]:
+        """Convert to numpy array of integers (0s and 1s)."""
+        return np.array([int(i) for i in self.array])
 
     @classmethod
-    def from_string(cls, s: str) -> 'Bitstring':
-        """Create a Bitstring from a string like '0101'."""
-        return cls([c == '1' for c in s])
+    def from_string(cls, s: str, endianess: str = 'little') -> 'Bitstring':
+        """Create a Bitstring from a string like '0101'.
+
+        Args:
+            s: Binary string (e.g., '0101')
+            endianess: 'little' (default) or 'big'
+        """
+        if endianess == "little":
+            bits = [b == '1' for b in s[::-1]]
+        else:
+            bits = [b == '1' for b in s]
+        return cls(bits, endianess=endianess)
 
     @classmethod
-    def from_int(cls, value: int, size: int) -> 'Bitstring':
-        """Create a Bitstring from an integer with specified size."""
-        binary = format(value, f'0{size}b')
-        return cls.from_string(binary)
+    def from_int(cls, value: int, size: int, endianess: str = 'little') -> 'Bitstring':
+        """Create a Bitstring from an integer with specified size.
+
+        Args:
+            value: Non-negative integer to convert
+            size: Number of bits in the output
+            endianess: 'big' (default) or 'little'
+
+        For big-endian: MSB is leftmost bit (standard binary)
+        For little-endian: array is stored reversed
+        """
+        bits = [(value >> i) & 1 for i in range(size)]
+        if endianess == "little":
+            array = [bool(b) for b in bits]
+        else:
+            array = [bool(b) for b in bits[::-1]]
+        return cls(array, endianess=endianess)
 
     @classmethod
-    def random(cls, size: int, rng=None) -> 'Bitstring':
+    def random(cls, size: int, rng=None, endianess: str = 'little') -> 'Bitstring':
         """Create a random Bitstring of given size.
 
         Args:
             size: Number of bits
             rng: Optional numpy random generator (for reproducibility)
+            endianess: 'big' (default) or 'little'
 
         Returns:
             Random Bitstring
@@ -76,7 +126,16 @@ class Bitstring():
         if rng is None:
             rng = np.random.default_rng()
         bits = rng.choice([True, False], size=size).tolist()
-        return cls(bits)
+        return cls(bits, endianess=endianess)
+
+    def copy(self) -> 'Bitstring':
+        """Return a deep copy of the Bitstring."""
+        return Bitstring(self.array.copy(), endianess=self.endianess)
+    
+    def convert_endian(self) -> 'Bitstring':
+        """Convert representation so integer value is preserved across endianness flip."""
+        target = 'little' if self.endianess == 'big' else 'big'
+        return Bitstring(self.array[::-1], endianess=target)
     
 @dataclass
 class SingleExcitation:
@@ -85,10 +144,11 @@ class SingleExcitation:
     virt: int  # virtual orbital index
     spin: str  # 'alpha' or 'beta'
     bitstring: Bitstring
+    n: int # number of occ alpha or beta orbitals
 
     def __repr__(self) -> str:
         spin_symbol = 'α' if self.spin == 'alpha' else 'β'
-        return f"{self.occ}{spin_symbol} → {self.virt}{spin_symbol}"
+        return f"{self.occ}{spin_symbol} → {self.virt+self.n}{spin_symbol}"
 
 @dataclass
 class DoubleExcitation:
@@ -99,14 +159,16 @@ class DoubleExcitation:
     virt2: int
     spin_case: str  # 'alpha-alpha', 'beta-beta', or 'alpha-beta'
     bitstring: Bitstring
+    n1: int # number of alpha or beta orbitals 
+    n2: int # number of alpha or beta orbitals
 
     def __repr__(self) -> str:
         if self.spin_case == 'alpha-alpha':
-            return f"({self.occ1}α,{self.occ2}α) → ({self.virt1}α,{self.virt2}α)"
+            return f"({self.occ1}α,{self.occ2}α) → ({self.virt1 + self.n1}α,{self.virt2 + self.n2}α)"
         elif self.spin_case == 'beta-beta':
-            return f"({self.occ1}β,{self.occ2}β) → ({self.virt1}β,{self.virt2}β)"
+            return f"({self.occ1}β,{self.occ2}β) → ({self.virt1 + self.n1}β,{self.virt2 + self.n2}β)"
         else:  # alpha-beta
-            return f"({self.occ1}α,{self.occ2}β) → ({self.virt1}α,{self.virt2}β)"
+            return f"({self.occ1}α,{self.occ2}β) → ({self.virt1 + self.n1}α,{self.virt2 + self.n2}β)"
 
 @dataclass
 class SingleAmplitudes:
@@ -166,16 +228,12 @@ class SingleAmplitudes:
 
         for coeff, exc in zip(coefficients, excitations):
             i = exc.occ
-            a = exc.virt - nocc
+            a = exc.virt
 
             if spin_type == "RHF":
                 t1[i, a] += coeff
             else:
-                # for UHF would need separate alpha/beta tensors
                 raise NotImplementedError("UHF singles amplitudes not yet implemented")
-
-        if spin_type == "RHF":
-            t1 /= 2.0
 
         return cls(amplitudes=t1, nocc=nocc, nvirt=nvirt, spin_type=spin_type)
 
@@ -187,7 +245,7 @@ class DoubleAmplitudes:
     - i,j: occupied spatial orbital indices (0 to nocc-1)
     - a,b: virtual spatial orbital indices (0 to nvirt-1)
 
-    Following antisymmetry convention: t2[i,j,a,b] = -t2[j,i,a,b] = -t2[i,j,b,a]
+    Following antisymmetry convention: t2[i,j,a,b] = -t2[j,i,a,b] = -t2[i,j,b,a] = t2[j,i,b,a]
     """
     amplitudes: np.ndarray  # shape: (nocc, nocc, nvirt, nvirt) for RHF
     nocc: int
@@ -224,7 +282,7 @@ class DoubleAmplitudes:
             spin_type: "RHF" or "UHF"
 
         Returns:
-            DoubleAmplitudes object with properly shaped tensor
+            DoubleAmplitudes object
         """
         if len(coefficients) != len(excitations):
             raise ValueError(
@@ -232,28 +290,31 @@ class DoubleAmplitudes:
                 f"number of excitations ({len(excitations)})"
             )
 
-        # Initialize amplitude tensor
         t2 = np.zeros((nocc, nocc, nvirt, nvirt), dtype=complex)
 
-        # Map coefficients to tensor indices
         for coeff, exc in zip(coefficients, excitations):
-            i = exc.occ1
-            j = exc.occ2
-            a = exc.virt1 - nocc  # virtual index (relative to nocc)
-            b = exc.virt2 - nocc
-
             if spin_type == "RHF":
-                # For RHF spatial orbitals, need to account for spin cases
-                if exc.spin_case == "alpha-alpha":
-                    # α-α excitation contributes to spatial t2[i,j,a,b]
-                    t2[i, j, a, b] += coeff
-                elif exc.spin_case == "beta-beta":
-                    # β-β excitation contributes identically to spatial t2[i,j,a,b]
-                    t2[i, j, a, b] += coeff
-                elif exc.spin_case == "alpha-beta":
-                    # α-β mixed spin excitation contributes to spatial t2[i,j,a,b]
-                    # In spatial orbital formalism: accounts for different spin interactions
-                    t2[i, j, a, b] += coeff
+
+                i = exc.occ1
+                j = exc.occ2
+                a = exc.virt1
+                b = exc.virt2
+
+                if exc.spin_case == 'alpha-beta':
+                
+                    if i == j and a == b:
+                        t2[i,j,a,b] += coeff
+                    else:
+                        t2[i,j,a,b] -= coeff
+                        t2[j,i,b,a] -= coeff
+
+                # elif exc.spin_case == 'alpha-alpha':
+
+                #     t2[i,j,a,b] += coeff
+                #     t2[j,i,a,b] -= coeff
+                #     t2[i,j,b,a] -= coeff
+                #     t2[j,i,b,a] += coeff
+
             else:
                 raise NotImplementedError("UHF doubles amplitudes not yet implemented")
 
@@ -277,8 +338,8 @@ def gaussian_elimination(
         Complex phase factor for the overlap
     """
     phase = 1 + 0j
-    interm_state = ref_state
-    target_str = target_state
+    interm_state = ref_state.copy()
+    target_str = target_state.copy()
     n_qubits = target_str.size
 
     for n in range(n_qubits):
@@ -406,40 +467,50 @@ def canonicalize(stabilizers: List[stim.PauliString]) -> List[stim.PauliString]:
 
     return canonicalized
 
+def make_hydrogen_chain(n_atoms: int, bond_length: float = 0.50) -> str:
+    """Generate a linear hydrogen chain with fixed interatomic distance.
+
+    Creates a string representation of N hydrogen atoms arranged linearly
+    along the z-axis with equal spacing, suitable for PySCF molecule input.
+
+    Args:
+        n_atoms: Number of hydrogen atoms in the chain (must be >= 1)
+        bond_length: Interatomic distance in Angstroms (default: 0.50)
+
+    Returns:
+        String in PySCF format: "H 0 0 0; H 0 0 d; H 0 0 2d; ..."
+
+    Examples:
+        >>> make_hydrogen_chain(2, 0.50)
+        'H 0 0 0; H 0 0 0.50'
+
+        >>> make_hydrogen_chain(4, 0.74)
+        'H 0 0 0; H 0 0 0.74; H 0 0 1.48; H 0 0 2.22'
+    """
+    if n_atoms < 1:
+        raise ValueError(f"n_atoms must be >= 1, got {n_atoms}")
+    if bond_length <= 0:
+        raise ValueError(f"bond_length must be positive, got {bond_length}")
+
+    atoms = []
+    for i in range(n_atoms):
+        z_coord = i * bond_length
+        atoms.append(f"H 0 0 {z_coord:.10g}")
+
+    return "; ".join(atoms)
+
 if __name__ == "__main__":
 
-    stabilizers = [
-        stim.PauliString('-ZYYX'),
-        stim.PauliString('ZXXI'),
-        stim.PauliString('-ZIXZ'),
-        stim.PauliString('-YYXX')
-    ]
-    U = stim.Tableau.from_stabilizers(stabilizers)
-    b = Bitstring([True, False, True, True])
+    # b = Bitstring.from_string('0001', endianess='big')
+    # print(b.to_int())
+    # print(b)
 
-    sim = stim.TableauSimulator()
-    sim.set_state_from_stabilizers(b.to_stabilizers())
-    sim.do_tableau(U.inverse(), targets=list(range(4)))
+    b = Bitstring.from_int(5, size=8, endianess='big')
+    print(b.to_int())
+    print(b.to_string())
+    print(b)
 
-    print('='*50)
-    print('Tableau from running U_inv * |b>')
-    print('='*50)
-    print(sim.current_inverse_tableau().to_stabilizers())
-
-    stabs = sim.current_inverse_tableau().to_stabilizers()
-    canonical = canonicalize(stabs)
-    print(canonical)
-
-    print('='*50)
-    print('CHECKING CANONICALIZATION FORMULA')
-    print('='*50)
-
-    # CANONICALIZATION IS CORRECT AND MATCHES PAPER RESULT
-    stabilizers = [
-        stim.PauliString('-XZIY'),
-        stim.PauliString('YXYY'),
-        stim.PauliString('XIXY'),
-        stim.PauliString('-YZIZ')
-    ]
-    canonical = canonicalize(stabilizers)
-    print(canonical)
+    b = Bitstring.from_int(5, size=8, endianess='little')
+    print(b.to_int())
+    print(b.to_string())
+    print(b)

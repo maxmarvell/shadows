@@ -164,3 +164,6 @@ outputs/
 logs/
 
 .ruff_cache/
+
+# Claude
+# CLAUDE.md

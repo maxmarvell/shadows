@@ -1,0 +1,49 @@
+======================================================================
+Convergence Analysis
+======================================================================
+
+Molecule: H2 (bond length = 0.50 Å)
+Basis set: sto-3g
+converged SCF energy = -1.04299627454009
+HF Energy: -1.04299627 Ha
+FCI Energy (exact): -1.05515979 Ha
+Correlation Energy (exact): -0.01216352 Ha
+
+======================================================================
+Running Shadow Tomography Convergence Study
+======================================================================
+
+[1/4] Running with 1,000 shadow samples...
+  Estimated Energy: -1.06551230-0.00281450j Ha
+  Absolute Error:   -1.04e-02-2.81e-03j Ha
+  Relative Error:   1.0167%
+  c0 (HF overlap):  1.020000+0.510000j
+
+[2/4] Running with 10,000 shadow samples...
+  Estimated Energy: -1.05175914-0.00731267j Ha
+  Absolute Error:   +3.40e-03-7.31e-03j Ha
+  Relative Error:   0.7643%
+  c0 (HF overlap):  0.990250-0.089250j
+
+[3/4] Running with 100,000 shadow samples...
+  Estimated Energy: -1.05397071-0.00633822j Ha
+  Absolute Error:   +1.19e-03-6.34e-03j Ha
+  Relative Error:   0.6112%
+  c0 (HF overlap):  0.997475+0.005950j
+
+[4/4] Running with 1,000,000 shadow samples...
+  Estimated Energy: -1.05507795+0.00056213j Ha
+  Absolute Error:   +8.18e-05+5.62e-04j Ha
+  Relative Error:   0.0538%
+  c0 (HF overlap):  0.997815+0.003655j
+
+======================================================================
+Convergence Summary
+======================================================================
+     Samples     Energy (Ha)      Error (Ha)   Rel Error (%)
+----------------------------------------------------------------------
+       1,000     -1.06551230       -1.04e-02          0.9811
+      10,000     -1.05175914       +3.40e-03          0.3223
+     100,000     -1.05397071       +1.19e-03          0.1127
+   1,000,000     -1.05507795       +8.18e-05          0.0078
+======================================================================

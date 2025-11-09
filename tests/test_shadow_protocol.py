@@ -118,8 +118,6 @@ class TestTauMethod:
 
     def test_tau_raises_error_for_non_orthogonal_state(self):
         """Test that tau() raises RuntimeError for non-orthogonal states."""
-        # Create state |+⟩ = (|0⟩ + |1⟩) / √2
-        # This has ⟨0|+⟩ = 1/√2 ≠ 0
         state = Statevector([1/np.sqrt(2), 1/np.sqrt(2)])
         protocol = ShadowProtocol(state, ensemble_type='clifford')
 
@@ -295,18 +293,18 @@ class TestEstimateOverlap:
 
     def test_estimate_overlap_with_simple_state(self):
         """Test overlap estimation with a simple computational basis state."""
-        # Use |0001⟩ state
-        state = Statevector.from_label("0001")
-        protocol = ShadowProtocol(state, ensemble_type='clifford')
 
-        # Collect samples
-        protocol.collect_samples(1000, 10, prediction='overlap')
+        bitstring = "0001"
+        state = Statevector.from_label(bitstring)
+        protocol = ShadowProtocol(state, ensemble_type='clifford', use_qulacs=True)
 
-        # Estimate overlap with |0001⟩
-        target_same = Bitstring([False, False, False, True])
+        protocol.collect_samples(20000, 20, prediction='overlap')
+
+        # check overlap with itself
+        target_same = Bitstring.from_string(bitstring)
         overlap_same = protocol.estimate_overlap(target_same)
 
-        assert abs(overlap_same) > 0.1  # Should be significant
+        assert abs(abs(overlap_same) - 1) < 0.05
 
     def test_estimate_overlap_uses_median_of_means(self):
         """Test that estimate_overlap uses median across K estimators."""
@@ -337,7 +335,7 @@ class TestOverlapCalculation:
         protocol = ShadowProtocol(state, ensemble_type='clifford')
 
         # Use large number of samples for statistical accuracy
-        protocol.collect_samples(5000, 50, prediction='overlap')
+        protocol.collect_samples(1000, 10, prediction='overlap')
 
         # Test overlap with |1⟩ (same state)
         target_1 = Bitstring([True])
@@ -358,18 +356,18 @@ class TestOverlapCalculation:
         Expected: ⟨11|01⟩ = 0
         """
         state = Statevector.from_label("01")
-        protocol = ShadowProtocol(state, ensemble_type='clifford')
+        protocol = ShadowProtocol(state, ensemble_type='clifford', use_qulacs=False)
 
-        protocol.collect_samples(5000, 50, prediction='overlap')
+        protocol.collect_samples(10000, 50, prediction='overlap')
 
 
         # Test overlap with |01⟩ (same state)
-        target_01 = Bitstring([False, True])
+        target_01 = Bitstring([True, False])
         overlap_01 = protocol.estimate_overlap(target_01)
         expected_01 = 1.0
 
         # Test overlap with |10⟩ (orthogonal)
-        target_10 = Bitstring([True, False])
+        target_10 = Bitstring([False, True])
         overlap_10 = protocol.estimate_overlap(target_10)
         expected_10 = 0.0
 
@@ -395,9 +393,9 @@ class TestOverlapCalculation:
         Expected: ⟨010|101⟩ = 0 (orthogonal)
         """
         state = Statevector.from_label("101")
-        protocol = ShadowProtocol(state, ensemble_type='clifford')
+        protocol = ShadowProtocol(state, ensemble_type='clifford', use_qulacs=True)
 
-        protocol.collect_samples(5000, 50, prediction='overlap')
+        protocol.collect_samples(5000, 10, prediction='overlap')
 
         # Test overlap with |101⟩ (same state)
         target_101 = Bitstring([True, False, True])
@@ -431,10 +429,10 @@ class TestOverlapCalculation:
         state = Statevector(state_data)
 
         protocol = ShadowProtocol(state, ensemble_type='clifford')
-        protocol.collect_samples(5000, 50, prediction='overlap')
+        protocol.collect_samples(10000, 100, prediction='overlap')
 
         # Test overlap with |10⟩
-        target_10 = Bitstring([True, False])
+        target_10 = Bitstring([False, True])
         overlap_10 = protocol.estimate_overlap(target_10)
         expected_10 = 1 / np.sqrt(2)
 
@@ -444,13 +442,13 @@ class TestOverlapCalculation:
         expected_11 = 1 / np.sqrt(2)
 
         # Test overlap with |01⟩ (orthogonal)
-        target_01 = Bitstring([False, True])
+        target_01 = Bitstring([True, False])
         overlap_01 = protocol.estimate_overlap(target_01)
         expected_01 = 0.0
 
-        assert abs(abs(overlap_10) - expected_10) < 0.3, \
+        assert abs(abs(overlap_10) - expected_10) < 0.15, \
             f"⟨10|ψ⟩: expected {expected_10:.3f}, got {abs(overlap_10):.3f}"
-        assert abs(abs(overlap_11) - expected_11) < 0.3, \
+        assert abs(abs(overlap_11) - expected_11) < 0.15, \
             f"⟨11|ψ⟩: expected {expected_11:.3f}, got {abs(overlap_11):.3f}"
         assert abs(overlap_01) < 0.15, \
             f"⟨01|ψ⟩: expected {expected_01:.3f}, got {abs(overlap_01):.3f}"
@@ -471,10 +469,10 @@ class TestOverlapCalculation:
         state = Statevector(state_data)
 
         protocol = ShadowProtocol(state, ensemble_type='clifford')
-        protocol.collect_samples(5000, 50, prediction='overlap')
+        protocol.collect_samples(1000, 50, prediction='overlap')
 
         # Test overlap with |10⟩
-        target_10 = Bitstring([True, False])
+        target_10 = Bitstring([False, True])
         overlap_10 = protocol.estimate_overlap(target_10)
         expected_10 = 1 / np.sqrt(2)
 
