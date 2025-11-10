@@ -382,58 +382,6 @@ class MolecularHamiltonian:
         else:
             raise NotImplementedError("g_ovvo only implemented for RHF (spin_type='RHF')")
 
-    def _compute_hf_energy(self) -> float:
-        """Compute the Hartree-Fock energy from stored integrals (private method).
-
-        For RHF, the electronic energy is:
-        E_elec = 2 * Σ_i h_ii + Σ_ij [2(ii|jj) - (ij|ji)]
-
-        Total energy includes nuclear repulsion:
-        E_HF = E_elec + E_nuc
-
-        Returns:
-            Total Hartree-Fock energy in Hartrees
-        """
-        if self.spin_type == "RHF":
-            n_alpha, _ = self.nelec
-            nocc = n_alpha  # number of doubly occupied orbitals
-
-            # one-electron contribution
-            e_one = 0.0
-            for i in range(nocc):
-                e_one += 2.0 * self.h1e[i, i]
-
-            # two-electron contribution
-            eri = self.h2e.reshape(self.norb, self.norb, self.norb, self.norb)
-            e_two = 0.0
-            for i in range(nocc):
-                for j in range(nocc):
-                    # Coulomb: 2 * (ii|jj)
-                    e_two += 2.0 * eri[i, i, j, j]
-                    # Exchange: -(ij|ji)
-                    e_two -= eri[i, j, j, i]
-
-            return e_one + e_two + self.nuclear_repulsion
-        else:
-            raise NotImplementedError("HF energy computation only implemented for RHF (spin_type='RHF')")
-
-    @property
-    def hf_energy(self) -> float:
-        """Get Hartree-Fock energy.
-
-        If the energy was stored during construction (e.g., from PySCF),
-        return that value. Otherwise, compute it from integrals.
-
-        Returns:
-            Total Hartree-Fock energy in Hartrees
-        """
-        if self._hf_energy is not None:
-            return self._hf_energy
-        else:
-            # Compute and cache it
-            self._hf_energy = self._compute_hf_energy()
-            return self._hf_energy
-
     def compute_correlation_energy(
         self,
         c0: complex,
@@ -473,33 +421,4 @@ class MolecularHamiltonian:
         return e_singles + e_doubles
 
 if __name__ == "__main__":
-
-    from pyscf import ao2mo, gto, scf, ci
-
-    # create a H2 mol
-    mol = gto.Mole()
-    mol.build(atom="H 0 0 0; H 0 0 0.50; H 0 0 1.00; H 0 0 1.50; H 0 0 2.00; H 0 0 2.50", basis="sto-3g")
-    mf = scf.RHF(mol)
-
-    nocc = mol.nelec[0]
-    norb = 2 * nocc
-    t1addr, t1sign = ci.cisd.tn_addrs_signs(norb, nocc, n_excite=1)
-
-    print(t1addr, t1sign)
-    # # create mean-field object
-    # hamiltonian = MolecularHamiltonian.from_pyscf(mf)
-
-    # singles = hamiltonian.get_single_excitations()
-    # doubles = hamiltonian.get_double_excitations()
-
-    # from shadow_ci.utils import DoubleAmplitudes
-
-    # n_alpha, _ = hamiltonian.nelec
-    # nocc = n_alpha
-    # nvirt = hamiltonian.norb - nocc
-
-    # coeffs = np.array([0.1 for _ in doubles])
-    # excitations = DoubleAmplitudes.from_excitation_list(coeffs, doubles, nocc, nvirt)
-
-    # print(doubles)
-
+    pass

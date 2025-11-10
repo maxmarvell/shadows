@@ -4,6 +4,9 @@ import stim
 
 import numpy as np
 from numpy.typing import NDArray
+from typing import Union, Optional
+from pyscf import scf
+from pyscf import ao2mo
 
 @dataclass
 class Bitstring():
@@ -499,18 +502,187 @@ def make_hydrogen_chain(n_atoms: int, bond_length: float = 0.50) -> str:
 
     return "; ".join(atoms)
 
+def get_hf_reference(mf: Union[scf.hf.RHF, scf.uhf.UHF]) -> Bitstring:
+    n_alpha, n_beta = mf.mol.nelec
+    norb = mf.mo_coeff.shape[0]
+    alpha_string = [True] * n_alpha + [False] * (norb - n_alpha) 
+    beta_string = [True] * n_beta + [False] * (norb - n_beta) 
+    return Bitstring(alpha_string + beta_string, endianess='little')
+
+def get_single_excitations(mf: Union[scf.hf.RHF, scf.uhf.UHF]) -> List[SingleExcitation]:
+
+    n_alpha, n_beta = mf.mol.nelec
+    norb = mf.mo_coeff.shape[0]
+    reference = get_hf_reference(mf) 
+
+    excitations = []
+
+    occupied_alpha = list(range(n_alpha))
+    virtual_alpha = list(range(n_alpha, norb))
+
+    # alpha excitations
+    for i in occupied_alpha:
+        for a in virtual_alpha:
+            excited_state = reference.copy()
+            excited_state[i] = False
+            excited_state[a] = True
+            excitations.append(SingleExcitation(
+                occ=i,
+                virt=a - n_alpha,
+                spin='alpha',
+                bitstring=excited_state,
+                n=n_alpha
+            ))
+
+    if isinstance(mf, scf.hf.RHF): return excitations
+
+    n_qubits = 2 * norb
+
+    occupied_beta = list(range(norb, norb + n_beta))
+    virtual_beta = list(range(norb + n_beta, n_qubits))
+
+    # beta excitations
+    for i in occupied_beta:
+        for a in virtual_beta:
+            excited_state = reference.copy()
+            excited_state[i] = False
+            excited_state[a] = True
+            excitations.append(SingleExcitation(
+                occ=i - norb,
+                virt=a - norb - n_beta,
+                spin='beta',
+                bitstring=excited_state, 
+                n=n_beta
+            ))
+
+    return excitations
+
+def get_double_excitations(mf: Union[scf.hf.RHF, scf.uhf.UHF]) -> List[DoubleExcitation]:
+
+        n_alpha, n_beta = mf.mol.nelec
+        norb = mf.mo_coeff.shape[0]
+        n_qubits = 2 * norb
+        reference = get_hf_reference(mf)
+        excitations = []
+
+        # alpha spin indices
+        occupied_alpha = list(range(n_alpha))
+        virtual_alpha = list(range(n_alpha, norb))
+
+        # beta spin indices
+        occupied_beta = list(range(norb, norb + n_beta))
+        virtual_beta = list(range(norb + n_beta, n_qubits))
+
+        # alpha-beta mixed excitations
+        for idx_i, i in enumerate(occupied_alpha):
+            if not isinstance(mf, scf.hf.RHF): idx_i = 0
+            else: idx_i += 1
+            for j in occupied_beta[idx_i:]:
+                for a in virtual_alpha:
+                    for b in virtual_beta:
+                        if a + norb == b: continue
+                        excited_state = reference.copy()
+                        excited_state[i] = False
+                        excited_state[j] = False
+                        excited_state[a] = True
+                        excited_state[b] = True
+                        excitations.append(DoubleExcitation(
+                            occ1=i, occ2=j - norb,
+                            virt1=a - n_alpha, virt2=b - norb - n_beta,
+                            spin_case='alpha-beta',
+                            bitstring=excited_state,
+                            n1=n_alpha, n2=n_beta
+                        ))
+
+        # get double excitations from same orbital
+        if isinstance(mf, scf.hf.RHF):
+            for i in occupied_alpha:
+                for a in virtual_alpha:
+                    excited_state = reference.copy()
+                    excited_state[i] = False
+                    excited_state[i+norb] = False
+                    excited_state[a] = True
+                    excited_state[a+norb] = True
+                    excitations.append(DoubleExcitation(
+                        occ1=i, occ2=i,
+                        virt1=a-n_alpha, virt2=a-n_alpha,
+                        spin_case='alpha-beta',
+                        bitstring=excited_state,
+                        n1=n_alpha, n2=n_alpha
+                    ))
+
+            # for RHF, skip alpha-alpha and beta-beta (equivalent to alpha-beta by symmetry)
+            return excitations
+
+        # alpha-alpha double excitations
+        for idx_i, i in enumerate(occupied_alpha):
+            for j in occupied_alpha[idx_i + 1:]:
+                for idx_a, a in enumerate(virtual_alpha):
+                    for b in virtual_alpha[idx_a + 1:]:
+                        excited_state = reference.copy()
+                        excited_state[i] = False
+                        excited_state[j] = False
+                        excited_state[a] = True
+                        excited_state[b] = True
+                        excitations.append(DoubleExcitation(
+                            occ1=i, occ2=j,
+                            virt1=a - n_alpha, virt2=b - n_alpha,
+                            spin_case='alpha-alpha',
+                            bitstring=excited_state,
+                            n1=n_alpha, n2=n_alpha
+                        ))
+
+        # beta-beta double excitations (UHF only)
+        for idx_i, i in enumerate(occupied_beta):
+            for j in occupied_beta[idx_i + 1:]:
+                for idx_a, a in enumerate(virtual_beta):
+                    for b in virtual_beta[idx_a + 1:]:
+                        excited_state = reference.copy()
+                        excited_state[i] = False
+                        excited_state[j] = False
+                        excited_state[a] = True
+                        excited_state[b] = True
+                        excitations.append(DoubleExcitation(
+                            occ1=i - norb, occ2=j - norb,
+                            virt1=a - norb - n_beta, virt2=b - norb - n_beta,
+                            spin_case='beta-beta',
+                            bitstring=excited_state,
+                            n1=n_beta, n2=n_beta
+                        ))
+
+        return excitations
+
+def compute_correlation_energy(
+        mf: Union[scf.hf.RHF, scf.uhf.UHF],
+        c0: float,
+        c1: Optional[NDArray[np.float64]],
+        c2: NDArray[np.float64]
+    ) -> float:
+    
+    if not isinstance(mf, scf.hf.RHF): 
+        raise NotImplementedError("Correlation energy formula only implemented for RHF")
+
+    e_singles = 0
+    nocc, _ = mf.mol.nelec
+    norb = mf.mo_coeff.shape[0]
+
+    if c1 is not None:
+        fock_ao = mf.get_fock()
+        fock_mo = mf.mo_coeff.T @ fock_ao @ mf.mo_coeff
+        f_ov = fock_mo[:nocc, nocc:]
+        e_singles = 2.0 * np.sum(f_ov * c1) / c0
+
+    mo_coeff = mf.mo_coeff
+    eri_ao = mf.mol.intor("int2e")
+    eri_mo = ao2mo.full(eri_ao, mo_coeff)
+    eri = eri_mo.reshape(norb, norb, norb, norb)
+    g_ovvo = eri[:nocc, nocc:, nocc:, :nocc]
+    e_doubles = (
+        2.0 * np.einsum("ijab,iabj->", c2, g_ovvo)
+        - np.einsum("ijab,ibaj->", c2, g_ovvo)
+    ) / c0
+
+    return e_singles + e_doubles
+
 if __name__ == "__main__":
-
-    # b = Bitstring.from_string('0001', endianess='big')
-    # print(b.to_int())
-    # print(b)
-
-    b = Bitstring.from_int(5, size=8, endianess='big')
-    print(b.to_int())
-    print(b.to_string())
-    print(b)
-
-    b = Bitstring.from_int(5, size=8, endianess='little')
-    print(b.to_int())
-    print(b.to_string())
-    print(b)
+    pass

@@ -16,7 +16,6 @@ Key convergence properties tested:
 """
 
 from pyscf import gto, scf
-from shadow_ci.hamiltonian import MolecularHamiltonian
 from shadow_ci.estimator import GroundStateEstimator
 from shadow_ci.solvers import FCISolver
 from shadow_ci.utils import make_hydrogen_chain
@@ -42,8 +41,8 @@ N_JOBS = 8  # Number of parallel jobs for estimation
 USE_QUALCS = True  # Use quantum-accelerated linear combination of states
 
 # Molecular system parameters
-N_HYDROGEN_ATOMS = 6  # Number of hydrogen atoms in chain
-BOND_LENGTH = 0.50  # Bond length in Angstroms
+N_HYDROGEN_ATOMS = 4  # Number of hydrogen atoms in chain
+BOND_LENGTH = 1.00  # Bond length in Angstroms
 BASIS_SET = "sto-3g"  # Basis set for quantum chemistry
 
 # Shadow sampling schedule (number of shots to test)
@@ -114,7 +113,7 @@ def main():
     print(f"Basis set: {BASIS_SET}")
 
     mf = scf.RHF(mol)
-    hamiltonian = MolecularHamiltonian.from_pyscf(mf)
+    mf.run()
 
     shots = SHOT_SCHEDULE
     all_energies = np.empty((len(shots), n_runs), dtype=float)
@@ -125,8 +124,8 @@ def main():
     print(f"Shot schedule: {shots.tolist()}")
     print(f"K-estimators: {N_K_ESTIMATORS}, Jobs: {N_JOBS}, QUALCS: {USE_QUALCS}")
 
-    fci_solver = FCISolver(hamiltonian)
-    estimator = GroundStateEstimator(hamiltonian, solver=fci_solver, verbose=0)
+    fci_solver = FCISolver(mf)
+    estimator = GroundStateEstimator(mf, solver=fci_solver, verbose=0)
     E_exact = estimator.E_exact
     E_hf = estimator.E_hf
 

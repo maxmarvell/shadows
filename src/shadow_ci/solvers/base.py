@@ -1,15 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Any
-from shadow_ci.hamiltonian import MolecularHamiltonian
+from typing import Tuple, Union
 from qiskit_nature.second_q.operators import FermionicOp
 from qiskit.quantum_info import Statevector
+from pyscf import scf
 
 
 class GroundStateSolver(ABC):
     """Abstract base class for quantum state solvers."""
 
-    def __init__(self, hamiltonian: FermionicOp):
-        self.hamiltonian = hamiltonian
+    def __init__(self, mf: Union[scf.hf.RHF, scf.uhf.UHF]):
+        self.mf = mf
         self.energy = None
         self.state = None
 

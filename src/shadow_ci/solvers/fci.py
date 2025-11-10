@@ -1,36 +1,53 @@
 from shadow_ci.solvers.base import GroundStateSolver
-from typing import Tuple
+from typing import Tuple, Union
 import numpy as np
 import pyscf.fci
 from qiskit.quantum_info import Statevector
-from shadow_ci.hamiltonian import MolecularHamiltonian
+from pyscf import scf, ao2mo
 
 
 class FCISolver(GroundStateSolver):
 
-    def __init__(self, hamiltonian: MolecularHamiltonian):
-        super().__init__(hamiltonian)
-        self.hamiltonian = hamiltonian
+    def __init__(self, mf: Union[scf.hf.RHF, scf.uhf.UHF]):
+        super().__init__(mf)
+        self._compute_integrals()
 
-    def solve(self, **options) -> Tuple[Statevector, float]:
+    def _compute_integrals(self):
+        """Compute and cache integrals from mf object."""
+        # Get one-electron integrals in MO basis
+        hcore = self.mf.get_hcore()
+        self.h1e = self.mf.mo_coeff.T @ hcore @ self.mf.mo_coeff
+        
+        # Get two-electron integrals in MO basis
+        eri_ao = self.mf.mol.intor('int2e')
+        self.h2e = ao2mo.full(eri_ao, self.mf.mo_coeff)
+        
+        # Cache other properties
+        self.norb = self.h1e.shape[0]  # From transformed integrals
+        self.nelec = self.mf.mol.nelec
+        self.nuclear_repulsion = self.mf.mol.energy_nuc()
 
-        if self.hamiltonian.spin_type == "RHF":
+    def solve(self, **options):
+        # Use direct_spin0 for RHF (matches old working code)
+        if isinstance(self.mf, scf.hf.RHF):
             energy, civec = pyscf.fci.direct_spin0.kernel(
-                self.hamiltonian.h1e,
-                self.hamiltonian.h2e,
-                self.hamiltonian.norb,
-                self.hamiltonian.nelec,
+                self.h1e,
+                self.h2e,
+                self.norb,
+                self.nelec,
+                **options
             )
-        else:
+        else:  # UHF
             energy, civec = pyscf.fci.direct_uhf.kernel(
-                self.hamiltonian.h1e,
-                self.hamiltonian.h2e,
-                self.hamiltonian.norb,
-                self.hamiltonian.nelec,
+                self.h1e,
+                self.h2e,
+                self.norb,
+                self.nelec,
+                **options
             )
-
-        self.energy = energy + self.hamiltonian.nuclear_repulsion
-
+        
+        # Add nuclear repulsion (FCI kernel returns electronic energy only)
+        self.energy = energy + self.nuclear_repulsion
         self.state = self._civec_to_statevector(civec)
         return self.state, self.energy
 
@@ -46,15 +63,14 @@ class FCISolver(GroundStateSolver):
         Returns:
             Qiskit Statevector in computational basis
         """
-        norb = self.hamiltonian.norb
-        n_alpha, n_beta = self.hamiltonian.nelec
+
+        n_alpha, n_beta = self.nelec
+        norb = self.norb
         n_qubits = 2 * norb
 
-        # Initialize full statevector (2^n_qubits amplitudes)
         full_statevector = np.zeros(2**n_qubits, dtype=complex)
 
-        if self.hamiltonian.spin_type == "RHF":
-            # For RHF, use direct_spin1 addressing
+        if isinstance(self.mf, scf.hf.RHF):
             from pyscf.fci import cistring
 
             # Generate all alpha and beta string addresses
@@ -74,13 +90,11 @@ class FCISolver(GroundStateSolver):
 
                     full_statevector[qubit_index] = ci_coeff
         else:
-            # UHF case
             from pyscf.fci import cistring
 
             alpha_strings = cistring.make_strings(range(norb), n_alpha)
             beta_strings = cistring.make_strings(range(norb), n_beta)
 
-            # civec might have different shape for UHF
             civec_flat = civec.ravel()
 
             for i_alpha, alpha_str in enumerate(alpha_strings):

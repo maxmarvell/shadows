@@ -283,13 +283,6 @@ class ShadowProtocol:
             time_tableau_gen = 0.0
             time_sampling = 0.0
 
-        if self.use_qulacs and self.use_gpu:
-            qulacs_initial_state = QuantumStateGpu(n_qubits)
-            qulacs_initial_state.load(state)
-        elif self.use_qulacs:
-            qulacs_state = qulacs.QuantumState(n_qubits)
-            qulacs_state.load(state)
-
         for i in range(n_samples):
             if self.verbose >= 3:
                 t0 = time.perf_counter()
@@ -303,9 +296,9 @@ class ShadowProtocol:
 
             cliff = _tableau_to_qiskit_clifford(tab)
             if self.use_qulacs:
+                qulacs_state = qulacs.QuantumState(n_qubits)
+                qulacs_state.load(state)
                 circuit = _clifford_to_qulacs_circuit(cliff, n_qubits)
-                if self.use_gpu:
-                    qulacs_state = qulacs_initial_state.copy()
                 circuit.update_quantum_state(qulacs_state)
                 sample = qulacs_state.sampling(1)[0]
                 bitstring = Bitstring.from_int(sample, size=n_qubits, endianess='little')

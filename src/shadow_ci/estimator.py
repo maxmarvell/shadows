@@ -1,5 +1,6 @@
-from shadow_ci.hamiltonian import MolecularHamiltonian
-from shadow_ci.utils import SingleAmplitudes, DoubleExcitation, SingleExcitation
+from typing import Union
+from pyscf import scf
+from shadow_ci.utils import DoubleExcitation, SingleExcitation, get_hf_reference, get_double_excitations, get_single_excitations, compute_correlation_energy
 from shadow_ci.solvers import GroundStateSolver
 from shadow_ci.shadows import ShadowProtocol
 
@@ -21,16 +22,17 @@ class GroundStateEstimator:
         verbose: Verbosity level (0=silent, 1=basic, 2=detailed, 3=debug)
     """
 
-    def __init__(self, hamiltonian: MolecularHamiltonian, solver: GroundStateSolver, verbose: int = 0):
+    def __init__(self, mf: Union[scf.hf.RHF, scf.uhf.UHF], solver: GroundStateSolver, verbose: int = 0):
         self.trial, self.E_exact = solver.solve()
-        self.E_hf = hamiltonian.hf_energy
-        self.hamiltonian = hamiltonian
-        self.n_qubits = 2 * hamiltonian.norb
+        self.E_hf = mf.e_tot
+        self.mf = mf
+        norb = mf.mo_coeff.shape[0]
+        self.n_qubits = 2 * norb
         self.verbose = verbose
 
         if self.verbose >= 2:
             print(f"[GroundStateEstimator] Initialized:")
-            print(f"  - System: {self.n_qubits} qubits ({hamiltonian.norb} orbitals)")
+            print(f"  - System: {self.n_qubits} qubits ({norb} orbitals)")
             print(f"  - HF Energy: {self.E_hf:.8f} Ha")
             print(f"  - FCI Energy: {self.E_exact:.8f} Ha")
             print(f"  - Correlation Energy: {self.E_exact - self.E_hf:.8f} Ha")
@@ -87,7 +89,7 @@ class GroundStateEstimator:
 
 
             if self.verbose >= 1:
-                n_singles = len(self.hamiltonian.get_single_excitations())
+                n_singles = len(get_single_excitations(self.mf))
                 print(f"\n[Phase 3/4] Estimating single excitation amplitudes (c1)...")
                 print(f"  - Number of single excitations: {n_singles}")
                 t_start = time.perf_counter()
@@ -102,7 +104,7 @@ class GroundStateEstimator:
             c1 = None
 
         if self.verbose >= 1:
-            n_doubles = len(self.hamiltonian.get_double_excitations())
+            n_doubles = len(get_double_excitations(self.mf))
             print(f"\n[Phase 4/4] Estimating double excitation amplitudes (c2)...")
             print(f"  - Number of double excitations: {n_doubles}")
             t_start = time.perf_counter()
@@ -117,7 +119,7 @@ class GroundStateEstimator:
         if self.verbose >= 2:
             print(f"\n[Computing correlation energy]...")
 
-        e_corr = self.hamiltonian.compute_correlation_energy(c0, c1, c2)
+        e_corr = compute_correlation_energy(self.mf, c0, c1, c2)
         e_total = self.E_hf + e_corr
 
         if self.verbose >= 1:
@@ -134,10 +136,10 @@ class GroundStateEstimator:
 
         return e_total, c0, c1, c2
 
-    def estimate_c0(self, protocol: ShadowProtocol) -> np.complex128:
-        psi0 = self.hamiltonian.get_hf_bitstring()
+    def estimate_c0(self, protocol: ShadowProtocol) -> np.float64:
+        psi0 = get_hf_reference(self.mf)
         overlap = protocol.estimate_overlap(psi0)
-        return overlap
+        return overlap.real
     
     def estimate_first_order_interactions(self, protocol: ShadowProtocol) -> np.ndarray:
         """Estimate single excitation amplitudes and return in tensor form.
@@ -149,22 +151,24 @@ class GroundStateEstimator:
             SingleAmplitudes: Amplitudes in t1[i,a] format (nocc, nvirt)
         """
 
-        excitations = self.hamiltonian.get_single_excitations()
+        excitations = get_single_excitations(self.mf)
         n_exc = len(excitations)
 
-        _, t1sign = tn_addrs_signs(self.hamiltonian.norb, self.hamiltonian.nocc, 1)
+        nocc, _ = self.mf.mol.nelec
+        norb = self.mf.mo_coeff.shape[0]
+        nvirt = norb - nocc
 
-        coeffs = np.empty(n_exc, dtype=complex)
+        _, t1sign = tn_addrs_signs(norb, nocc, 1)
+
+        coeffs = np.empty(n_exc, dtype=np.float64)
         for i, ex in enumerate(excitations):
-            coeffs[i] = protocol.estimate_overlap(ex.bitstring)
+            coeffs[i] = protocol.estimate_overlap(ex.bitstring).real
 
             if self.verbose >= 1 and (i + 1) % max(1, n_exc // 10) == 0:
                 progress = (i + 1) / n_exc * 100
                 print(f"    Progress: {i+1}/{n_exc} ({progress:.0f}%)")
 
-        # t1 = self._construct_singles_tensor(coeffs, excitations)
-
-        return (coeffs * t1sign).reshape(self.hamiltonian.nocc, self.hamiltonian.nvirt)
+        return (coeffs * t1sign).reshape(nocc, nvirt)
 
     def estimate_second_order_interaction(self, protocol: ShadowProtocol) -> np.ndarray:
         """Estimate double excitation amplitudes and return in tensor form.
@@ -173,12 +177,12 @@ class GroundStateEstimator:
             DoubleAmplitudes: Amplitudes in t2[i,j,a,b] format (nocc, nocc, nvirt, nvirt)
         """
 
-        excitations = self.hamiltonian.get_double_excitations()
+        excitations = get_double_excitations(self.mf)
         n_exc = len(excitations)
 
-        coeffs = np.empty(n_exc, dtype=complex)
+        coeffs = np.empty(n_exc, dtype=np.float64)
         for i, ex in enumerate(excitations):
-            coeffs[i] = protocol.estimate_overlap(ex.bitstring)
+            coeffs[i] = protocol.estimate_overlap(ex.bitstring).real
 
             # Progress reporting for verbose mode
             if self.verbose >= 1 and (i + 1) % max(1, n_exc // 10) == 0:
@@ -194,14 +198,18 @@ class GroundStateEstimator:
                 f"Number of coefficients ({len(coefficients)}) doesn't match "
                 f"number of excitations ({len(excitations)})"
             )
+        
+        nocc, _ = self.mf.mol.nelec
+        norb = self.mf.mo_coeff.shape[0]
+        nvirt = norb - nocc
 
-        t1 = np.zeros((self.hamiltonian.nocc, self.hamiltonian.nvirt), dtype=complex)
+        t1 = np.zeros((nocc, nvirt), dtype=complex)
 
         for coeff, exc in zip(coefficients, excitations):
             i = exc.occ
             a = exc.virt
 
-            if self.hamiltonian.spin_type == "RHF": # we anticipate just alpha-alpha excitations here
+            if isinstance(self.mf, scf.hf.RHF): # we anticipate just alpha-alpha excitations here
                 t1[i, a] += coeff
             else:
                 raise NotImplementedError("UHF singles amplitudes not yet implemented")
@@ -216,11 +224,13 @@ class GroundStateEstimator:
                 f"number of excitations ({len(excitations)})"
             )
 
-        nocc, nvirt = self.hamiltonian.nocc, self.hamiltonian.nvirt
+        nocc, _ = self.mf.mol.nelec
+        norb = self.mf.mo_coeff.shape[0]
+        nvirt = norb - nocc
         t2 = np.zeros((nocc, nvirt, nocc, nvirt), dtype=complex)
 
         for coeff, exc in zip(coefficients, excitations):
-            if self.hamiltonian.spin_type == "RHF":
+            if isinstance(self.mf, scf.hf.RHF):
 
                 i = exc.occ1
                 j = exc.occ2
@@ -238,7 +248,7 @@ class GroundStateEstimator:
             else:
                 raise NotImplementedError("UHF doubles amplitudes not yet implemented")
 
-        _, t1sign = tn_addrs_signs(self.hamiltonian.norb, nocc, 1)
+        _, t1sign = tn_addrs_signs(norb, nocc, 1)
         antisymmetrised = np.einsum(
             "i,j,ij->ij", t1sign, t1sign, t2.reshape(nocc*nvirt, nocc*nvirt)
         ).reshape(nocc, nocc, nvirt, nvirt).transpose(0,2,1,3)
