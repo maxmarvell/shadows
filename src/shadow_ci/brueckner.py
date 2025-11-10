@@ -47,18 +47,13 @@ class BruecknerSolver:
             E, c0, c1, _ = estimator.estimate_ground_state(
                 n_samples=10000,
                 n_k_estimators=20,
-                n_jobs=4,
+                n_jobs=8,
                 calc_c1=True
             )
 
-            nocc, _ = self.mf.mol.nelec
-            norb = self.mf.mo_coeff.shape[0]
-            _, t1sign = tn_addrs_signs(norb, nocc, 1)
+            t1 = c1 / c0
 
-            t1sign_2d = t1sign.reshape(nocc, norb - nocc)
-            c1_raw = c1 / t1sign_2d
-
-            t1 = c1_raw / c0
+            norm = np.linalg.norm(t1) 
 
             if i > 1:
                 if np.abs(E - E_prev) < energy_tol:
@@ -67,6 +62,7 @@ class BruecknerSolver:
             self._update_mf(t1, diis=diis)
 
             E_prev = E
+            prev_norm = norm
 
 
     def _update_mf(self, t1: np.ndarray, canonicalize=True, damping=0.0, diis: Optional[lib.diis.DIIS] = None):
