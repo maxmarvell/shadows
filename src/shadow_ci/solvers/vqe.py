@@ -43,7 +43,7 @@ class VQESolver(GroundStateSolver):
     def _setup_from_pyscf(self):
         """Extract problem data from PySCF via PySCFDriver."""
         
-        atom_string = self.mf.mol.atom  # Already in PySCF format
+        atom_string = self.mf.mol.atom 
         basis = self.mf.mol.basis
         charge = self.mf.mol.charge
         spin = self.mf.mol.spin

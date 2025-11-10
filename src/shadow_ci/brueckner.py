@@ -5,6 +5,8 @@ from shadow_ci.estimator import GroundStateEstimator
 import numpy as np
 import scipy.linalg
 
+from pyscf.ci.cisd import tn_addrs_signs
+
 class BruecknerSolver:
 
     def __init__(
@@ -20,7 +22,7 @@ class BruecknerSolver:
         else:
             raise NotImplementedError()
         
-        if solver_type == 'vqe':
+        if solver_type in ['vqe', 'fci']:
             self.solver_type = solver_type
         else:
             raise NotImplementedError()
@@ -35,17 +37,28 @@ class BruecknerSolver:
 
         for i in range(self.max_iter):
 
-            solver = VQESolver(self.mf)
-            estimator = GroundStateEstimator(self.mf, solver, verbose=3)
+            if self.solver_type == 'fci':
+                solver = FCISolver(self.mf) 
+            else:
+                solver = VQESolver(self.mf)
+
+            estimator = GroundStateEstimator(self.mf, solver, verbose=4)
 
             E, c0, c1, _ = estimator.estimate_ground_state(
-                n_samples=1000,
+                n_samples=10000,
                 n_k_estimators=20,
                 n_jobs=4,
                 calc_c1=True
             )
 
-            t1 = c1 / c0
+            nocc, _ = self.mf.mol.nelec
+            norb = self.mf.mo_coeff.shape[0]
+            _, t1sign = tn_addrs_signs(norb, nocc, 1)
+
+            t1sign_2d = t1sign.reshape(nocc, norb - nocc)
+            c1_raw = c1 / t1sign_2d
+
+            t1 = c1_raw / c0
 
             if i > 1:
                 if np.abs(E - E_prev) < energy_tol:
@@ -145,7 +158,8 @@ if __name__ == "__main__":
 
     mf = scf.RHF(mol)
     mf.run()
-    solver = BruecknerSolver(mf)
+
+    solver = BruecknerSolver(mf, solver_type='vqe')
 
     E = solver.solve()
 

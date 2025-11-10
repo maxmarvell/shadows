@@ -81,7 +81,7 @@ class GroundStateEstimator:
             print(f"\n[Phase 2/4] Estimating HF reference overlap (c0)...")
             t_start = time.perf_counter()
 
-        c0 = self.estimate_c0(protocol)
+        c0 = self.estimate_reference_determinant(protocol)
 
         if calc_c1:
             t_elapsed = time.perf_counter() - t_start
@@ -136,7 +136,7 @@ class GroundStateEstimator:
 
         return e_total, c0, c1, c2
 
-    def estimate_c0(self, protocol: ShadowProtocol) -> np.float64:
+    def estimate_reference_determinant(self, protocol: ShadowProtocol) -> np.float64:
         psi0 = get_hf_reference(self.mf)
         overlap = protocol.estimate_overlap(psi0)
         return overlap.real
@@ -168,7 +168,14 @@ class GroundStateEstimator:
                 progress = (i + 1) / n_exc * 100
                 print(f"    Progress: {i+1}/{n_exc} ({progress:.0f}%)")
 
-        return (coeffs * t1sign).reshape(nocc, nvirt)
+
+        t1 = np.empty((nocc, nvirt), dtype=np.float64)
+        for c, e in zip(coeffs, excitations):
+            i = e.occ
+            a = e.virt
+            t1[i,a] = c
+        
+        return t1
 
     def estimate_second_order_interaction(self, protocol: ShadowProtocol) -> np.ndarray:
         """Estimate double excitation amplitudes and return in tensor form.
@@ -190,31 +197,6 @@ class GroundStateEstimator:
                 print(f"    Progress: {i+1}/{n_exc} ({progress:.0f}%)")
 
         return self._construct_doubles_tensor(coeffs, excitations)
-
-    def _construct_singles_tensor(self, coefficients: np.ndarray, excitations: List[SingleExcitation]) -> np.ndarray:
-
-        if len(coefficients) != len(excitations):
-            raise ValueError(
-                f"Number of coefficients ({len(coefficients)}) doesn't match "
-                f"number of excitations ({len(excitations)})"
-            )
-        
-        nocc, _ = self.mf.mol.nelec
-        norb = self.mf.mo_coeff.shape[0]
-        nvirt = norb - nocc
-
-        t1 = np.zeros((nocc, nvirt), dtype=complex)
-
-        for coeff, exc in zip(coefficients, excitations):
-            i = exc.occ
-            a = exc.virt
-
-            if isinstance(self.mf, scf.hf.RHF): # we anticipate just alpha-alpha excitations here
-                t1[i, a] += coeff
-            else:
-                raise NotImplementedError("UHF singles amplitudes not yet implemented")
-
-        return t1
     
     def _construct_doubles_tensor(self, coefficients: np.ndarray, excitations: List[DoubleExcitation]):
 
