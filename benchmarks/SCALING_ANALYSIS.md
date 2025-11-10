@@ -154,8 +154,7 @@ Based on the benchmarking, the major bottlenecks are:
 
 1. **Parallelization**: The script includes `n_jobs` parameter for multiprocessing (not thoroughly tested yet)
 2. **Batch Processing**: Process multiple overlaps in parallel
-3. **GPU Acceleration**: Qulacs supports GPU backends for very large systems
-4. **Hybrid Approach**: Use stabilizer rank decomposition for certain Cliffords
+3. **Hybrid Approach**: Use stabilizer rank decomposition for certain Cliffords
 
 ## Conclusion
 

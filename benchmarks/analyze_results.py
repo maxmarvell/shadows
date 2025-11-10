@@ -83,7 +83,7 @@ def analyze_results(csv_path: str):
             print(f"  Recommended for N > 50")
         else:
             print(f"⚠ Performance is moderate")
-            print(f"  Consider GPU acceleration for larger systems")
+            print(f"  Consider using more parallel workers for larger systems")
 
     if 'Qiskit' in df['backend'].values:
         qiskit_data = df[df['backend'] == 'Qiskit']

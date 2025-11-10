@@ -194,7 +194,6 @@ See [SCALING_ANALYSIS.md](SCALING_ANALYSIS.md) for detailed analysis and recomme
 
 **For Large Molecules (> 14 qubits)**
 - **Qulacs required** (Qiskit becomes impractical)
-- Consider GPU acceleration
 - Consider parallelization (`n_jobs > 1`)
 
 **Installing Qulacs:**

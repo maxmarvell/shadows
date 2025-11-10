@@ -14,12 +14,6 @@ import warnings
 
 from shadow_ci.utils import Bitstring, gaussian_elimination, compute_x_rank, canonicalize
 
-try:
-    from qulacs import QuantumStateGpu
-    GPU_AVAILABLE = True
-except (ImportError, Exception):
-    GPU_AVAILABLE = False
-    QuantumStateGpu = None
 
 _SHM = None
 _ARR = None
@@ -167,16 +161,15 @@ class ShadowProtocol:
             *,
             ensemble_type: str = 'clifford',
             use_qulacs: bool = True,
-            use_gpu: bool = 'auto',  # 'auto', True, False
             n_jobs: int = 1,
             verbose: int = 0,
         ):
-        """Initialize with a ClassicalShadow object.
+        """Initialize with a quantum state.
 
         Args:
             state: Input quantum state
             ensemble_type: Type of ensemble ('clifford' or 'pauli')
-            use_qulacs: Use Qulacs for faster simulation (default: True, auto-detects availability)
+            use_qulacs: Use Qulacs for faster simulation (default: True)
             n_jobs: Number of parallel processes (1 = no parallelization)
             verbose: Verbosity level (0=silent, 1=basic, 2=detailed, 3=debug)
         """
@@ -195,14 +188,6 @@ class ShadowProtocol:
         self.use_qulacs = use_qulacs
         self.n_jobs = n_jobs
         self.verbose = verbose
-
-        if use_gpu == 'auto':
-            self.use_gpu = GPU_AVAILABLE
-        elif use_gpu and not GPU_AVAILABLE:
-            warnings.warn("GPU requested but qulacs-gpu not available, falling back to CPU")
-            self.use_gpu = False
-        else:
-            self.use_gpu = use_gpu
 
     def tau(self) -> Statevector:
         if not np.allclose(self.state.data[0], 0):
