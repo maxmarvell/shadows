@@ -5,7 +5,6 @@ from qiskit_aer.primitives import EstimatorV2
 from qiskit_aer import AerSimulator
 from qiskit_algorithms import VQE
 from qiskit_algorithms.optimizers import SLSQP
-from qiskit_nature.second_q.operators import FermionicOp
 from qiskit.quantum_info import Statevector
 from qiskit_nature.second_q.mappers import (
     QubitMapper,
@@ -16,9 +15,10 @@ from qiskit_nature.second_q.mappers import (
 from qiskit_nature.second_q.circuit.library import HartreeFock
 
 from shadow_ci.solvers.base import GroundStateSolver
-from shadow_ci.hamiltonian import MolecularHamiltonian
 
 from qiskit_nature.second_q.drivers import PySCFDriver
+
+from pyscf import scf
 
 
 class VQESolver(GroundStateSolver):
@@ -26,35 +26,40 @@ class VQESolver(GroundStateSolver):
 
     def __init__(
         self,
-        hamiltonian: FermionicOp,
-        num_particles: Tuple[int, int],
-        num_orbitals: int,
+        mf: Union[scf.hf.RHF, scf.uhf.UHF],
         *,
-        ansatz: Optional[QuantumCircuit] = None,
         mapper: Union[str, QubitMapper] = "jw",
-        nuclear_repulsion_energy: float = 0.0,
     ):
-        """
-        Initialize VQE solver.
-
+        """Initialize VQE solver from PySCF mean-field object.
+        
         Args:
-            hamiltonian: MolecularHamiltonian instance
-            optimizer: Qiskit optimizer (default: SLSQP)
-            ansatz: Custom ansatz circuit (default: TwoLocal)
-            mapper: Fermion-to-qubit mapping. Options:
-                - "jw" or "jordan_wigner": Jordan-Wigner Transform
-                - "parity": Parity encoding
-                - "bravyi_kitaev" or "bk": Bravyi-Kitaev Transform
-                - Or pass a QubitMapper instance directly
-            max_iter: Maximum optimizer iterations
-            nuclear_repulsion_energy: Nuclear repulsion energy to add to electronic energy
+            mf: PySCF mean-field object (RHF or UHF)
+            mapper: Fermion-to-qubit mapping (default: "jw")
         """
-        super().__init__(hamiltonian)
-        self.ansatz = ansatz
-        self.num_particles = num_particles
-        self.num_orbitals = num_orbitals
+        super().__init__(mf)
         self.mapper = self._setup_mapper(mapper)
-        self.nuclear_repulsion_energy = nuclear_repulsion_energy
+        self._setup_from_pyscf()
+
+    def _setup_from_pyscf(self):
+        """Extract problem data from PySCF via PySCFDriver."""
+        
+        atom_string = self.mf.mol.atom  # Already in PySCF format
+        basis = self.mf.mol.basis
+        charge = self.mf.mol.charge
+        spin = self.mf.mol.spin
+        
+        driver = PySCFDriver(
+            atom=atom_string,
+            basis=basis,
+            charge=charge,
+            spin=spin
+        )
+        
+        problem = driver.run()
+        self.num_particles = problem.num_particles
+        self.num_orbitals = problem.num_spatial_orbitals
+        self.hamiltonian = problem.second_q_ops()[0]
+        self.nuclear_repulsion_energy = problem.nuclear_repulsion_energy
 
     def _setup_mapper(self, mapper: Union[str, QubitMapper]) -> QubitMapper:
         """Set up the fermion-to-qubit mapper."""
@@ -80,7 +85,7 @@ class VQESolver(GroundStateSolver):
     @classmethod
     def from_pyscf_driver(cls, driver: PySCFDriver, *, mapper: QubitMapper) -> 'VQESolver':
         problem = driver.run()
-        num_particles = problem.num_particles        # (n_alpha, n_beta)
+        num_particles = problem.num_particles
         num_spatial_orbitals = problem.num_spatial_orbitals
         hamiltonian = problem.second_q_ops()[0]
         nuclear_repulsion = problem.nuclear_repulsion_energy
@@ -131,22 +136,5 @@ class VQESolver(GroundStateSolver):
         return Statevector(ansatz.assign_parameters(result.optimal_parameters)), total_energy
 
 if __name__ == "__main__":
-
-    from pyscf import gto, scf
-
-    mol = gto.Mole()
-    mol.build(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g")
-
-    mf = scf.RHF(mol)
-    H = MolecularHamiltonian.from_pyscf(mf)
-
-    vqe = VQESolver(H, mapper="bravyi_kitaev")
-    state, gs = vqe.solve()
-
-    from shadow_ci.solvers.fci import FCISolver
-    fci = FCISolver(H)
-    state_exact, gs_exact = fci.solve()
-
-    print(gs, gs_exact)
 
     pass
