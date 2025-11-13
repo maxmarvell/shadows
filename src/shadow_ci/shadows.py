@@ -42,6 +42,19 @@ class ClassicalSnapshot:
         np.ndarray
     ]
     sampler: str
+    _cached_inverse: Union[stim.Tableau, None] = None
+
+    def get_inverse(self) -> stim.Tableau:
+        """Get cached inverse of the unitary tableau.
+
+        Returns:
+            Inverse tableau (cached after first computation)
+        """
+        if self._cached_inverse is None:
+            if not isinstance(self.unitary, stim.Tableau):
+                raise NotImplementedError("Only Clifford/Tableau unitaries supported")
+            self._cached_inverse = self.unitary.inverse()
+        return self._cached_inverse
 
 @dataclass
 class ClassicalShadow:
@@ -64,28 +77,24 @@ class ClassicalShadow:
             Estimated overlap between states a and b
         """
         overlaps = []
+        vacuum = Bitstring([False] * self.n_qubits, endianess='little')
 
         for snapshot in self.shadow:
-            if not isinstance(snapshot.unitary, stim.Tableau):
-                raise NotImplementedError("Only Clifford/Tableau unitaries supported")
-
             stabilizers = snapshot.measurement.to_stabilizers()
 
-            U_inv = snapshot.unitary.inverse()
+            U_inv = snapshot.get_inverse()
             transformed_stabilizers = [U_inv(s) for s in stabilizers]
             canonical_stabilizers = canonicalize(transformed_stabilizers)
 
-            # get the magnitude
             x_rank = compute_x_rank(canonical_stabilizers)
-            mag = np.sqrt(2) ** (-x_rank)
+            mag = 2 ** (-x_rank / 2)
 
-            # get the phase
             sim = stim.TableauSimulator()
             tab = stim.Tableau.from_stabilizers(canonical_stabilizers)
             sim.do_tableau(tab, targets=list(range(self.n_qubits)))
             measurement = sim.measure_many(*range(snapshot.measurement.size))
             bitstring = Bitstring(measurement, endianess='little')
-            vacuum = Bitstring([False] * self.n_qubits, endianess='little')
+
             phase_a = gaussian_elimination(canonical_stabilizers, bitstring, a)
             phase_0 = gaussian_elimination(canonical_stabilizers, bitstring, vacuum)
 
