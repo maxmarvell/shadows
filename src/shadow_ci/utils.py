@@ -11,13 +11,15 @@ from pyscf import ao2mo
 @dataclass
 class Bitstring():
 
-    array: List[bool]
+    array: NDArray[np.bool_]
     endianess: str = 'little'
 
     def __post_init__(self):
-        """Validate endianness parameter."""
+        """Validate endianness parameter and ensure numpy array."""
         if self.endianess not in ('big', 'little'):
             raise ValueError(f"endianess must be 'big' or 'little', got '{self.endianess}'")
+        if not isinstance(self.array, np.ndarray):
+            self.array = np.array(self.array, dtype=np.bool_)
 
     @property
     def size(self) -> int:
@@ -25,7 +27,10 @@ class Bitstring():
 
     def __getitem__(self, key):
         """Allow indexing as array[i]"""
-        return self.array[key]
+        result = self.array[key]
+        if isinstance(result, np.bool_):
+            return bool(result)
+        return result
 
     def __setitem__(self, key, value):
         """Allow item assignment as array[i] = value"""
@@ -35,7 +40,7 @@ class Bitstring():
         """Check equality with another Bitstring."""
         if not isinstance(other, Bitstring):
             return False
-        return self.array == other.array and self.endianess == other.endianess
+        return np.array_equal(self.array, other.array) and self.endianess == other.endianess
 
     def __iter__(self):
         """Allow iteration over bits."""
@@ -79,7 +84,7 @@ class Bitstring():
 
     def to_array(self) -> NDArray[np.int_]:
         """Convert to numpy array of integers (0s and 1s)."""
-        return np.array([int(i) for i in self.array])
+        return self.array.astype(np.int_)
 
     @classmethod
     def from_string(cls, s: str, endianess: str = 'little') -> 'Bitstring':
@@ -90,9 +95,9 @@ class Bitstring():
             endianess: 'little' (default) or 'big'
         """
         if endianess == "little":
-            bits = [b == '1' for b in s[::-1]]
+            bits = np.array([b == '1' for b in s[::-1]], dtype=np.bool_)
         else:
-            bits = [b == '1' for b in s]
+            bits = np.array([b == '1' for b in s], dtype=np.bool_)
         return cls(bits, endianess=endianess)
 
     @classmethod
@@ -107,12 +112,10 @@ class Bitstring():
         For big-endian: MSB is leftmost bit (standard binary)
         For little-endian: array is stored reversed
         """
-        bits = [(value >> i) & 1 for i in range(size)]
-        if endianess == "little":
-            array = [bool(b) for b in bits]
-        else:
-            array = [bool(b) for b in bits[::-1]]
-        return cls(array, endianess=endianess)
+        bits = np.array([(value >> i) & 1 for i in range(size)], dtype=np.bool_)
+        if endianess == "big":
+            bits = bits[::-1]
+        return cls(bits, endianess=endianess)
 
     @classmethod
     def random(cls, size: int, rng=None, endianess: str = 'little') -> 'Bitstring':
@@ -128,7 +131,7 @@ class Bitstring():
         """
         if rng is None:
             rng = np.random.default_rng()
-        bits = rng.choice([True, False], size=size).tolist()
+        bits = rng.choice([True, False], size=size).astype(np.bool_)
         return cls(bits, endianess=endianess)
 
     def copy(self) -> 'Bitstring':

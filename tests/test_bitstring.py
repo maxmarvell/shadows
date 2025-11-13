@@ -40,10 +40,10 @@ class TestBitstringConstruction:
         """Test construction from string."""
         bits = Bitstring.from_string("0101")
         assert bits.size == 4
-        assert bits[0] == False
-        assert bits[1] == True
-        assert bits[2] == False
-        assert bits[3] == True
+        assert bits[0] == True
+        assert bits[1] == False
+        assert bits[2] == True
+        assert bits[3] == False
 
     def test_from_string_empty(self):
         """Test from_string with empty string."""
@@ -87,7 +87,7 @@ class TestBitstringConstruction:
         """Test random bitstring generation."""
         bits = Bitstring.random(10)
         assert bits.size == 10
-        assert all(isinstance(bit, bool) for bit in bits)
+        assert all(isinstance(bit, np.bool_) for bit in bits)
 
     def test_random_bitstring_reproducible(self):
         """Test that random bitstring is reproducible with seed."""
@@ -199,7 +199,7 @@ class TestBitstringConversions:
     def test_to_string(self):
         """Test conversion to string."""
         bits = Bitstring([True, False, True, False])
-        assert bits.to_string() == "1010"
+        assert bits.to_string() == "0101"
 
     def test_to_string_empty(self):
         """Test to_string with empty bitstring."""
@@ -218,7 +218,7 @@ class TestBitstringConversions:
 
     def test_to_int(self):
         """Test conversion to integer."""
-        bits = Bitstring([True, False, True, False])  # "1010" = 10
+        bits = Bitstring([False, True, False, True])  # "1010" = 10
         assert bits.to_int() == 10
 
     def test_to_int_zero(self):

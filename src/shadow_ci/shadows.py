@@ -14,12 +14,6 @@ import warnings
 
 from shadow_ci.utils import Bitstring, gaussian_elimination, compute_x_rank, canonicalize
 
-try:
-    from qulacs import QuantumStateGpu
-    GPU_AVAILABLE = True
-except (ImportError, Exception):
-    GPU_AVAILABLE = False
-    QuantumStateGpu = None
 
 _SHM = None
 _ARR = None
@@ -48,6 +42,19 @@ class ClassicalSnapshot:
         np.ndarray
     ]
     sampler: str
+    _cached_inverse: Union[stim.Tableau, None] = None
+
+    def get_inverse(self) -> stim.Tableau:
+        """Get cached inverse of the unitary tableau.
+
+        Returns:
+            Inverse tableau (cached after first computation)
+        """
+        if self._cached_inverse is None:
+            if not isinstance(self.unitary, stim.Tableau):
+                raise NotImplementedError("Only Clifford/Tableau unitaries supported")
+            self._cached_inverse = self.unitary.inverse()
+        return self._cached_inverse
 
 @dataclass
 class ClassicalShadow:
@@ -70,28 +77,24 @@ class ClassicalShadow:
             Estimated overlap between states a and b
         """
         overlaps = []
+        vacuum = Bitstring([False] * self.n_qubits, endianess='little')
 
         for snapshot in self.shadow:
-            if not isinstance(snapshot.unitary, stim.Tableau):
-                raise NotImplementedError("Only Clifford/Tableau unitaries supported")
-
             stabilizers = snapshot.measurement.to_stabilizers()
 
-            U_inv = snapshot.unitary.inverse()
+            U_inv = snapshot.get_inverse()
             transformed_stabilizers = [U_inv(s) for s in stabilizers]
             canonical_stabilizers = canonicalize(transformed_stabilizers)
 
-            # get the magnitude
             x_rank = compute_x_rank(canonical_stabilizers)
-            mag = np.sqrt(2) ** (-x_rank)
+            mag = 2 ** (-x_rank / 2)
 
-            # get the phase
             sim = stim.TableauSimulator()
             tab = stim.Tableau.from_stabilizers(canonical_stabilizers)
             sim.do_tableau(tab, targets=list(range(self.n_qubits)))
             measurement = sim.measure_many(*range(snapshot.measurement.size))
             bitstring = Bitstring(measurement, endianess='little')
-            vacuum = Bitstring([False] * self.n_qubits, endianess='little')
+
             phase_a = gaussian_elimination(canonical_stabilizers, bitstring, a)
             phase_0 = gaussian_elimination(canonical_stabilizers, bitstring, vacuum)
 
@@ -167,16 +170,15 @@ class ShadowProtocol:
             *,
             ensemble_type: str = 'clifford',
             use_qulacs: bool = True,
-            use_gpu: bool = 'auto',  # 'auto', True, False
             n_jobs: int = 1,
             verbose: int = 0,
         ):
-        """Initialize with a ClassicalShadow object.
+        """Initialize with a quantum state.
 
         Args:
             state: Input quantum state
             ensemble_type: Type of ensemble ('clifford' or 'pauli')
-            use_qulacs: Use Qulacs for faster simulation (default: True, auto-detects availability)
+            use_qulacs: Use Qulacs for faster simulation (default: True)
             n_jobs: Number of parallel processes (1 = no parallelization)
             verbose: Verbosity level (0=silent, 1=basic, 2=detailed, 3=debug)
         """
@@ -195,14 +197,6 @@ class ShadowProtocol:
         self.use_qulacs = use_qulacs
         self.n_jobs = n_jobs
         self.verbose = verbose
-
-        if use_gpu == 'auto':
-            self.use_gpu = GPU_AVAILABLE
-        elif use_gpu and not GPU_AVAILABLE:
-            warnings.warn("GPU requested but qulacs-gpu not available, falling back to CPU")
-            self.use_gpu = False
-        else:
-            self.use_gpu = use_gpu
 
     def tau(self) -> Statevector:
         if not np.allclose(self.state.data[0], 0):
