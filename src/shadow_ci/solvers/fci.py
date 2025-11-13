@@ -14,30 +14,22 @@ class FCISolver(GroundStateSolver):
 
     def _compute_integrals(self):
         """Compute and cache integrals from mf object."""
-        # Get one-electron integrals in MO basis
         hcore = self.mf.get_hcore()
         self.h1e = self.mf.mo_coeff.T @ hcore @ self.mf.mo_coeff
         
-        # Get two-electron integrals in MO basis
         eri_ao = self.mf.mol.intor('int2e')
         self.h2e = ao2mo.full(eri_ao, self.mf.mo_coeff)
         
-        # Cache other properties
-        self.norb = self.h1e.shape[0]  # From transformed integrals
+        self.norb = self.h1e.shape[0]
         self.nelec = self.mf.mol.nelec
         self.nuclear_repulsion = self.mf.mol.energy_nuc()
 
     def solve(self, **options):
-        # Use direct_spin0 for RHF (matches old working code)
+
         if isinstance(self.mf, scf.hf.RHF):
-            energy, civec = pyscf.fci.direct_spin0.kernel(
-                self.h1e,
-                self.h2e,
-                self.norb,
-                self.nelec,
-                **options
-            )
-        else:  # UHF
+            energy, civec = pyscf.fci.FCI(self.mf).kernel()
+            self.energy = energy
+        else:
             energy, civec = pyscf.fci.direct_uhf.kernel(
                 self.h1e,
                 self.h2e,
@@ -45,9 +37,8 @@ class FCISolver(GroundStateSolver):
                 self.nelec,
                 **options
             )
-        
-        # Add nuclear repulsion (FCI kernel returns electronic energy only)
-        self.energy = energy + self.nuclear_repulsion
+            self.energy = energy + self.nuclear_repulsion
+
         self.state = self._civec_to_statevector(civec)
         return self.state, self.energy
 
@@ -73,19 +64,13 @@ class FCISolver(GroundStateSolver):
         if isinstance(self.mf, scf.hf.RHF):
             from pyscf.fci import cistring
 
-            # Generate all alpha and beta string addresses
             alpha_strings = cistring.make_strings(range(norb), n_alpha)
             beta_strings = cistring.make_strings(range(norb), n_beta)
 
-            # Map each FCI determinant to its corresponding qubit basis state
             for i_alpha, alpha_str in enumerate(alpha_strings):
                 for i_beta, beta_str in enumerate(beta_strings):
-                    # Get CI coefficient for this determinant
                     ci_coeff = civec[i_alpha, i_beta]
 
-                    # Convert to qubit index (Jordan-Wigner encoding)
-                    # In JW: |α₀α₁...α_{norb-1}β₀β₁...β_{norb-1}⟩
-                    # PySCF strings are in occupation number representation
                     qubit_index = int(alpha_str) + (int(beta_str) << norb)
 
                     full_statevector[qubit_index] = ci_coeff

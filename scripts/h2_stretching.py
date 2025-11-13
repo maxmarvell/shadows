@@ -23,7 +23,6 @@ References:
 """
 
 from pyscf import gto, scf
-from shadow_ci.hamiltonian import MolecularHamiltonian
 from shadow_ci.estimator import GroundStateEstimator
 from shadow_ci.solvers import FCISolver
 from shadow_ci.utils import make_hydrogen_chain
@@ -73,12 +72,11 @@ def main():
 
         # Compute Hartree-Fock reference state
         mf = scf.RHF(mol)
-        hamiltonian = MolecularHamiltonian.from_pyscf(mf)
-        print(f"  HF Energy: {hamiltonian.hf_energy:.8f} Ha")
+        # print(f"  HF Energy: {mf.h.hf_energy:.8f} Ha")
 
         # Run exact FCI calculation for ground truth comparison
-        fci_solver = FCISolver(hamiltonian)
-        estimator = GroundStateEstimator(hamiltonian, solver=fci_solver, verbose=4)
+        fci_solver = FCISolver(mf)
+        estimator = GroundStateEstimator(mf, solver=fci_solver, verbose=4)
         print(f"  FCI Energy (exact): {estimator.E_exact:.8f} Ha")
 
         # Perform N_SIMULATIONS independent shadow tomography runs

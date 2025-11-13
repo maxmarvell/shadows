@@ -53,6 +53,7 @@ class GroundStateEstimator:
         Returns:
             Tuple of (energy, c0_overlap, singles_amplitudes, doubles_amplitudes)
         """
+        
         if self.verbose >= 2:
             print(f"\n{'=' * 70}")
             print(f"Shadow Tomography Ground State Estimation")
@@ -157,8 +158,6 @@ class GroundStateEstimator:
         nocc, _ = self.mf.mol.nelec
         norb = self.mf.mo_coeff.shape[0]
         nvirt = norb - nocc
-
-        _, t1sign = tn_addrs_signs(norb, nocc, 1)
 
         coeffs = np.empty(n_exc, dtype=np.float64)
         for i, ex in enumerate(excitations):
