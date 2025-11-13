@@ -433,17 +433,17 @@ class TestOverlapCalculation:
 
         # Test overlap with |10⟩
         target_10 = Bitstring([False, True])
-        overlap_10 = protocol.estimate_overlap(target_10)
+        overlap_10 = protocol.estimate_overlap(target_10).real
         expected_10 = 1 / np.sqrt(2)
 
         # Test overlap with |11⟩
         target_11 = Bitstring([True, True])
-        overlap_11 = protocol.estimate_overlap(target_11)
+        overlap_11 = protocol.estimate_overlap(target_11).real
         expected_11 = 1 / np.sqrt(2)
 
         # Test overlap with |01⟩ (orthogonal)
         target_01 = Bitstring([True, False])
-        overlap_01 = protocol.estimate_overlap(target_01)
+        overlap_01 = protocol.estimate_overlap(target_01).real
         expected_01 = 0.0
 
         assert abs(abs(overlap_10) - expected_10) < 0.15, \
