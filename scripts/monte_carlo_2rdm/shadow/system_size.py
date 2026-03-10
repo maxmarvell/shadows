@@ -33,12 +33,12 @@ DEFAULT_OUTPUT_DIR = f"./results/rdm2_scaling/{datetime.now().strftime('%Y-%m-%d
 
 # Fixed parameters
 N_RUNS = 20
-N_MC_ITERS = 100000
+N_MC_ITERS = 1000000
 N_SHADOWS = 10000
 N_K_ESTIMATORS = 20
 MPS_BOND_DIM = 300
 MPS_PROB_CUTOFF = None
-N_WORKERS = 4
+N_WORKERS = 1
 
 # Convergence checking
 CONV_WINDOW = 500      # check convergence over this many iterations

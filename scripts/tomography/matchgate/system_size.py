@@ -24,12 +24,12 @@ from shades.utils import make_hydrogen_chain
 import numpy as np
 import logging
 
-SYSTEM_SIZES = [2, 4, 6, 8]
-INTERATOMIC_DISTANCE = 1.00
+SYSTEM_SIZES = [2, 4, 6, 8, 10, 12]
+INTERATOMIC_DISTANCE = 1.50
 BASIS_SET = "sto-3g"
 
-N_SHADOWS = 10000
-N_SIMULATIONS = 10
+N_SHADOWS = 1000
+N_SIMULATIONS = 100
 
 RUN_COMMENT = "System size scaling study: energy variance vs number of orbitals."
 OUTPUT_DIR = f"./results/tomography/matchgate/system_size/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}/"
